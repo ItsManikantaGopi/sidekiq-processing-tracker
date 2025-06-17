@@ -145,10 +145,13 @@ Sidekiq::ProcessingTracker.configure do |config|
   config.heartbeat_interval = 45  # seconds
   config.heartbeat_ttl = 120      # seconds
   config.recovery_lock_ttl = 600  # seconds
+
+  # Optional: Use custom Redis instance (advanced use case)
+  # config.redis_options = { url: ENV['TRACKER_REDIS_URL'] }
 end
 
 # Note: The gem automatically uses Sidekiq's Redis configuration
-# No need to configure Redis separately
+# No need to configure Redis separately unless you want isolation
 ```
 
 ## Configuration
@@ -162,6 +165,40 @@ All configuration can be done via environment variables:
 | `HEARTBEAT_INTERVAL` | `30` | Seconds between heartbeat updates |
 | `HEARTBEAT_TTL` | `90` | Seconds before instance considered dead |
 | `RECOVERY_LOCK_TTL` | `300` | Seconds to hold recovery lock |
+
+## Redis Integration
+
+The gem provides flexible Redis integration options:
+
+### Default Configuration (Recommended)
+By default, the gem uses Sidekiq's existing Redis connection pool with proper namespacing:
+
+```ruby
+# Uses Sidekiq's Redis configuration automatically
+Sidekiq::ProcessingTracker.configure do |config|
+  config.namespace = "my_app_processing"
+end
+```
+
+### Custom Redis Configuration (Advanced)
+For advanced use cases requiring Redis isolation:
+
+```ruby
+Sidekiq::ProcessingTracker.configure do |config|
+  config.namespace = "my_app_processing"
+  config.redis_options = {
+    url: ENV['TRACKER_REDIS_URL'],
+    db: 2,
+    timeout: 5
+  }
+end
+```
+
+### Benefits
+- **Connection Efficiency**: Reuses Sidekiq's connection pool by default
+- **Automatic Namespacing**: Uses Redis::Namespace for clean key separation
+- **Configuration Consistency**: Inherits Sidekiq's Redis settings
+- **Flexible Options**: Support for custom Redis when needed
 
 **Note**: Redis configuration is automatically inherited from Sidekiq's configuration. Configure Redis through Sidekiq's standard methods.
 

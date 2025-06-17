@@ -2,6 +2,7 @@
 
 require "sidekiq"
 require "redis"
+require "redis/namespace"
 require "logger"
 require "securerandom"
 
@@ -14,7 +15,7 @@ module Sidekiq
     class Error < StandardError; end
 
     class << self
-      attr_accessor :instance_id, :namespace, :heartbeat_interval, :heartbeat_ttl, :recovery_lock_ttl, :logger
+      attr_accessor :instance_id, :namespace, :heartbeat_interval, :heartbeat_ttl, :recovery_lock_ttl, :logger, :redis_options
 
       def configure
         yield self if block_given?
@@ -22,15 +23,30 @@ module Sidekiq
         setup_sidekiq_hooks
       end
 
-      def redis
-        # Use Sidekiq's Redis connection pool
-        Sidekiq.redis_pool.with { |conn| yield conn } if block_given?
-        Sidekiq.redis_pool
+      def redis(&block)
+        if redis_options
+          # Use custom Redis configuration if provided
+          redis_client = Redis.new(redis_options)
+          namespaced_redis = Redis::Namespace.new(namespace, redis: redis_client)
+          if block_given?
+            result = yield namespaced_redis
+            redis_client.close
+            result
+          else
+            namespaced_redis
+          end
+        else
+          # Use Sidekiq's Redis connection pool with namespace
+          Sidekiq.redis do |conn|
+            namespaced_conn = Redis::Namespace.new(namespace, redis: conn)
+            yield namespaced_conn if block_given?
+          end
+        end
       end
 
       def redis_sync(&block)
-        # Synchronous Redis operations using Sidekiq's pool
-        Sidekiq.redis(&block)
+        # Synchronous Redis operations using Sidekiq's pool or custom config
+        redis(&block)
       end
 
       def reenqueue_orphans!
@@ -38,9 +54,9 @@ module Sidekiq
           logger.info "ProcessingTracker starting orphan job recovery"
 
           redis_sync do |conn|
-            # Get all job keys and instance keys
-            job_keys = conn.keys("#{namespace}:jobs:*")
-            instance_keys = conn.keys("#{namespace}:instance:*")
+            # Get all job keys and instance keys (namespace is handled by Redis::Namespace)
+            job_keys = conn.keys("jobs:*")
+            instance_keys = conn.keys("instance:*")
 
             # Extract instance IDs from keys
             live_instances = instance_keys.map { |key| key.split(":").last }.to_set
@@ -55,7 +71,7 @@ module Sidekiq
 
                 job_ids.each do |jid|
                   # Get the job payload
-                  job_data_key = "#{namespace}:job:#{jid}"
+                  job_data_key = "job:#{jid}"
                   job_payload = conn.get(job_data_key)
 
                   if job_payload
@@ -127,17 +143,17 @@ module Sidekiq
               end
 
               redis_sync do |conn|
-                # Clean up instance heartbeat
-                conn.del("#{namespace}:instance:#{instance_id}")
+                # Clean up instance heartbeat (namespace handled by Redis::Namespace)
+                conn.del("instance:#{instance_id}")
 
                 # Clean up any remaining job tracking for this instance
-                job_tracking_key = "#{namespace}:jobs:#{instance_id}"
+                job_tracking_key = "jobs:#{instance_id}"
                 tracked_jobs = conn.smembers(job_tracking_key)
 
                 if tracked_jobs.any?
                   logger.warn "ProcessingTracker cleaning up #{tracked_jobs.size} tracked jobs on shutdown"
                   tracked_jobs.each do |jid|
-                    conn.del("#{namespace}:job:#{jid}")
+                    conn.del("job:#{jid}")
                   end
                   conn.del(job_tracking_key)
                 end
@@ -180,7 +196,7 @@ module Sidekiq
 
 
       def send_heartbeat
-        key = "#{namespace}:instance:#{instance_id}"
+        key = "instance:#{instance_id}"
         redis_sync do |conn|
           conn.setex(key, heartbeat_ttl, Time.now.to_f)
         end
@@ -188,7 +204,7 @@ module Sidekiq
       end
 
       def with_recovery_lock
-        lock_key = "#{namespace}:recovery_lock"
+        lock_key = "recovery_lock"
         lock_acquired = redis_sync do |conn|
           conn.set(lock_key, instance_id, nx: true, ex: recovery_lock_ttl)
         end
@@ -211,5 +227,6 @@ module Sidekiq
   end
 end
 
-# Auto-setup Sidekiq hooks when gem is required
+# Auto-setup defaults and Sidekiq hooks when gem is required
+Sidekiq::ProcessingTracker.send(:setup_defaults)
 Sidekiq::ProcessingTracker.setup_sidekiq_hooks

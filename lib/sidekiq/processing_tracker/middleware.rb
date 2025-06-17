@@ -9,12 +9,11 @@ module Sidekiq
 
         jid = job["jid"]
         instance_id = ProcessingTracker.instance_id
-        namespace = ProcessingTracker.namespace
         logger = ProcessingTracker.logger
 
-        # Create tracking keys
-        job_tracking_key = "#{namespace}:jobs:#{instance_id}"
-        job_data_key = "#{namespace}:job:#{jid}"
+        # Create tracking keys (namespace handled by Redis::Namespace)
+        job_tracking_key = "jobs:#{instance_id}"
+        job_data_key = "job:#{jid}"
 
         begin
           # Add job to tracking set and store job payload

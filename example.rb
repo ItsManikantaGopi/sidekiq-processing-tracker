@@ -31,6 +31,9 @@ Sidekiq::ProcessingTracker.configure do |config|
   config.namespace = "example_app_processing"
   config.heartbeat_interval = 30
   config.heartbeat_ttl = 90
+
+  # Optional: Use custom Redis instance (advanced use case)
+  # config.redis_options = { url: ENV['TRACKER_REDIS_URL'] }
 end
 
 puts "Sidekiq Processing Tracker Example"
@@ -53,3 +56,34 @@ puts "   SimpleWorker.perform_async('hello world')"
 puts ""
 puts "The gem will automatically track ImportantDataProcessor jobs and"
 puts "recover them if the worker pod crashes during processing."
+
+puts "\n=== Redis Integration Demo ==="
+puts "Instance ID: #{Sidekiq::ProcessingTracker.instance_id}"
+puts "Namespace: #{Sidekiq::ProcessingTracker.namespace}"
+
+# Test Redis connection (will fail gracefully if Redis not available)
+begin
+  Sidekiq::ProcessingTracker.redis_sync do |conn|
+    puts "Redis connection: #{conn.ping}"
+    puts "Redis namespace: #{conn.namespace}"
+
+    # Test namespace functionality
+    test_key = "demo_key"
+    conn.set(test_key, "demo_value")
+    value = conn.get(test_key)
+    puts "Namespace test: #{test_key} = #{value}"
+    conn.del(test_key)
+  end
+rescue => e
+  puts "Redis connection failed (expected if Redis not running): #{e.message}"
+end
+
+puts "\n=== Configuration Options Demo ==="
+puts "Current configuration:"
+puts "  Namespace: #{Sidekiq::ProcessingTracker.namespace}"
+puts "  Heartbeat interval: #{Sidekiq::ProcessingTracker.heartbeat_interval}s"
+puts "  Heartbeat TTL: #{Sidekiq::ProcessingTracker.heartbeat_ttl}s"
+puts "  Recovery lock TTL: #{Sidekiq::ProcessingTracker.recovery_lock_ttl}s"
+puts "  Custom Redis: #{Sidekiq::ProcessingTracker.redis_options ? 'Yes' : 'No (using Sidekiq Redis)'}"
+
+puts "\nExample completed successfully!"

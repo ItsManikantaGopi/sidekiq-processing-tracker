@@ -36,6 +36,7 @@ Gem::Specification.new do |spec|
   # Runtime dependencies
   spec.add_dependency "sidekiq", ">= 6.0", "< 7"
   spec.add_dependency "redis", "~> 4.0"
+  spec.add_dependency "redis-namespace", "~> 1.8"
 
   # Development dependencies
   spec.add_development_dependency "rspec", "~> 3.0"
