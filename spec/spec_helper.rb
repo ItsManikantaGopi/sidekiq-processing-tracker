@@ -14,7 +14,7 @@ RSpec.configure do |config|
   config.before(:each) do
     # Flush Redis before each test
     begin
-      Sidekiq::ProcessingTracker.redis.flushdb
+      Sidekiq::ProcessingTracker.redis_sync { |conn| conn.flushdb }
     rescue Redis::CannotConnectError
       # Skip if Redis is not available
     end
@@ -25,7 +25,6 @@ RSpec.configure do |config|
     Sidekiq::ProcessingTracker.instance_variable_set(:@heartbeat_interval, nil)
     Sidekiq::ProcessingTracker.instance_variable_set(:@heartbeat_ttl, nil)
     Sidekiq::ProcessingTracker.instance_variable_set(:@recovery_lock_ttl, nil)
-    Sidekiq::ProcessingTracker.instance_variable_set(:@redis, nil)
 
     # Reconfigure with test settings
     Sidekiq::ProcessingTracker.configure do |config|
@@ -37,7 +36,7 @@ RSpec.configure do |config|
 
   config.after(:each) do
     # Clean up Redis after each test
-    Sidekiq::ProcessingTracker.redis.flushdb
+    Sidekiq::ProcessingTracker.redis_sync { |conn| conn.flushdb }
   end
 end
 

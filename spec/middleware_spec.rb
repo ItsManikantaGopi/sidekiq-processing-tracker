@@ -4,9 +4,12 @@ require "spec_helper"
 
 RSpec.describe Sidekiq::ProcessingTracker::Middleware do
   let(:middleware) { described_class.new }
-  let(:redis) { Sidekiq::ProcessingTracker.redis }
   let(:namespace) { Sidekiq::ProcessingTracker.namespace }
   let(:instance_id) { Sidekiq::ProcessingTracker.instance_id }
+
+  def redis_sync(&block)
+    Sidekiq::ProcessingTracker.redis_sync(&block)
+  end
   
   let(:job_data) do
     {
@@ -24,43 +27,49 @@ RSpec.describe Sidekiq::ProcessingTracker::Middleware do
       it "adds job to tracking before execution" do
         job_tracking_key = "#{namespace}:jobs:#{instance_id}"
         job_data_key = "#{namespace}:job:#{job_data['jid']}"
-        
+
         middleware.call(worker, job_data, "default") do
           # During execution, job should be tracked
-          expect(redis.sismember(job_tracking_key, job_data["jid"])).to be true
-          expect(redis.exists(job_data_key)).to eq(1)
-          
-          stored_job = JSON.parse(redis.get(job_data_key))
-          expect(stored_job).to eq(job_data)
+          redis_sync do |conn|
+            expect(conn.sismember(job_tracking_key, job_data["jid"])).to be true
+            expect(conn.exists(job_data_key)).to eq(1)
+
+            stored_job = JSON.parse(conn.get(job_data_key))
+            expect(stored_job).to eq(job_data)
+          end
         end
       end
 
       it "removes job from tracking after execution" do
         job_tracking_key = "#{namespace}:jobs:#{instance_id}"
         job_data_key = "#{namespace}:job:#{job_data['jid']}"
-        
+
         middleware.call(worker, job_data, "default") do
           # Job execution
         end
-        
+
         # After execution, job should not be tracked
-        expect(redis.sismember(job_tracking_key, job_data["jid"])).to be false
-        expect(redis.exists(job_data_key)).to eq(0)
+        redis_sync do |conn|
+          expect(conn.sismember(job_tracking_key, job_data["jid"])).to be false
+          expect(conn.exists(job_data_key)).to eq(0)
+        end
       end
 
       it "removes job from tracking even if job raises an error" do
         job_tracking_key = "#{namespace}:jobs:#{instance_id}"
         job_data_key = "#{namespace}:job:#{job_data['jid']}"
-        
+
         expect do
           middleware.call(worker, job_data, "default") do
             raise "job error"
           end
         end.to raise_error("job error")
-        
+
         # Job should still be cleaned up
-        expect(redis.sismember(job_tracking_key, job_data["jid"])).to be false
-        expect(redis.exists(job_data_key)).to eq(0)
+        redis_sync do |conn|
+          expect(conn.sismember(job_tracking_key, job_data["jid"])).to be false
+          expect(conn.exists(job_data_key)).to eq(0)
+        end
       end
 
       it "handles multiple concurrent jobs" do
@@ -86,15 +95,17 @@ RSpec.describe Sidekiq::ProcessingTracker::Middleware do
         sleep 0.05 # Let second job start
         
         # Both jobs should be tracked
-        expect(redis.sismember(job_tracking_key, job_data["jid"])).to be true
-        expect(redis.sismember(job_tracking_key, job_data_2["jid"])).to be true
-        
+        redis_sync do |conn|
+          expect(conn.sismember(job_tracking_key, job_data["jid"])).to be true
+          expect(conn.sismember(job_tracking_key, job_data_2["jid"])).to be true
+        end
+
         # Wait for jobs to complete
         thread1.join
         thread2.join
-        
+
         # No jobs should be tracked after completion
-        expect(redis.scard(job_tracking_key)).to eq(0)
+        redis_sync { |conn| expect(conn.scard(job_tracking_key)).to eq(0) }
       end
     end
 
@@ -104,20 +115,24 @@ RSpec.describe Sidekiq::ProcessingTracker::Middleware do
       it "does not track the job" do
         job_tracking_key = "#{namespace}:jobs:#{instance_id}"
         job_data_key = "#{namespace}:job:#{job_data['jid']}"
-        
+
         executed = false
         middleware.call(worker, job_data, "default") do
           executed = true
           # Job should not be tracked
-          expect(redis.sismember(job_tracking_key, job_data["jid"])).to be false
-          expect(redis.exists(job_data_key)).to eq(0)
+          redis_sync do |conn|
+            expect(conn.sismember(job_tracking_key, job_data["jid"])).to be false
+            expect(conn.exists(job_data_key)).to eq(0)
+          end
         end
-        
+
         expect(executed).to be true
-        
+
         # Still not tracked after execution
-        expect(redis.sismember(job_tracking_key, job_data["jid"])).to be false
-        expect(redis.exists(job_data_key)).to eq(0)
+        redis_sync do |conn|
+          expect(conn.sismember(job_tracking_key, job_data["jid"])).to be false
+          expect(conn.exists(job_data_key)).to eq(0)
+        end
       end
     end
   end

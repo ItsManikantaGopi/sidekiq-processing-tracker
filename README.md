@@ -13,6 +13,7 @@ Sidekiq Processing Tracker solves this by:
 - **Automatic recovery** of orphaned jobs from dead instances
 - **Distributed locking** to ensure safe recovery operations
 - **Zero configuration** setup with sensible defaults
+- **Uses Sidekiq's Redis** - leverages existing Redis connection pool for efficiency
 
 ## Problems Solved
 
@@ -140,12 +141,14 @@ end
 
 ```ruby
 Sidekiq::ProcessingTracker.configure do |config|
-  config.redis = Redis.new(url: "redis://custom-host:6379/0")
   config.namespace = "my_app_processing"
   config.heartbeat_interval = 45  # seconds
   config.heartbeat_ttl = 120      # seconds
   config.recovery_lock_ttl = 600  # seconds
 end
+
+# Note: The gem automatically uses Sidekiq's Redis configuration
+# No need to configure Redis separately
 ```
 
 ## Configuration
@@ -154,12 +157,13 @@ All configuration can be done via environment variables:
 
 | Environment Variable | Default | Description |
 |---------------------|---------|-------------|
-| `REDIS_URL` | `redis://localhost:6379/0` | Redis connection URL |
 | `PROCESSING_INSTANCE_ID` | Auto-generated | Unique identifier for this worker instance |
 | `PROCESSING_NS` | `sidekiq_processing` | Redis namespace for all keys |
 | `HEARTBEAT_INTERVAL` | `30` | Seconds between heartbeat updates |
 | `HEARTBEAT_TTL` | `90` | Seconds before instance considered dead |
 | `RECOVERY_LOCK_TTL` | `300` | Seconds to hold recovery lock |
+
+**Note**: Redis configuration is automatically inherited from Sidekiq's configuration. Configure Redis through Sidekiq's standard methods.
 
 ### Kubernetes Deployment Example
 
@@ -180,12 +184,11 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: metadata.name  # Use pod name as instance ID
-        - name: REDIS_URL
-          value: "redis://redis-service:6379/0"
         - name: HEARTBEAT_INTERVAL
           value: "30"
         - name: HEARTBEAT_TTL
           value: "90"
+        # Redis configuration is handled by Sidekiq's standard configuration
 ```
 
 ## How It Works

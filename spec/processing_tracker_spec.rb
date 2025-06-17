@@ -3,9 +3,12 @@
 require "spec_helper"
 
 RSpec.describe Sidekiq::ProcessingTracker do
-  let(:redis) { described_class.redis }
   let(:namespace) { described_class.namespace }
   let(:instance_id) { described_class.instance_id }
+
+  def redis_sync(&block)
+    described_class.redis_sync(&block)
+  end
 
   describe ".configure" do
     it "sets up default configuration" do
@@ -38,26 +41,28 @@ RSpec.describe Sidekiq::ProcessingTracker do
   describe "heartbeat system" do
     it "creates heartbeat keys in Redis" do
       sleep 0.1 # Give heartbeat thread a moment
-      
+
       heartbeat_key = "#{namespace}:instance:#{instance_id}"
-      expect(redis.exists(heartbeat_key)).to eq(1)
-      
-      # Check that the value is a timestamp
-      timestamp = redis.get(heartbeat_key).to_f
-      expect(timestamp).to be > (Time.now.to_f - 10)
+      redis_sync do |conn|
+        expect(conn.exists(heartbeat_key)).to eq(1)
+
+        # Check that the value is a timestamp
+        timestamp = conn.get(heartbeat_key).to_f
+        expect(timestamp).to be > (Time.now.to_f - 10)
+      end
     end
 
     it "refreshes heartbeat periodically" do
       heartbeat_key = "#{namespace}:instance:#{instance_id}"
-      
+
       # Get initial timestamp
       sleep 0.1
-      initial_timestamp = redis.get(heartbeat_key).to_f
-      
+      initial_timestamp = redis_sync { |conn| conn.get(heartbeat_key).to_f }
+
       # Wait for refresh
       sleep 1.5
-      new_timestamp = redis.get(heartbeat_key).to_f
-      
+      new_timestamp = redis_sync { |conn| conn.get(heartbeat_key).to_f }
+
       expect(new_timestamp).to be > initial_timestamp
     end
   end
@@ -75,43 +80,47 @@ RSpec.describe Sidekiq::ProcessingTracker do
 
     before do
       # Simulate a dead instance with orphaned jobs
-      redis.sadd("#{namespace}:jobs:#{other_instance_id}", job_data["jid"])
-      redis.set("#{namespace}:job:#{job_data['jid']}", job_data.to_json)
+      redis_sync do |conn|
+        conn.sadd("#{namespace}:jobs:#{other_instance_id}", job_data["jid"])
+        conn.set("#{namespace}:job:#{job_data['jid']}", job_data.to_json)
+      end
     end
 
     it "re-enqueues jobs from dead instances" do
       expect(Sidekiq::Client).to receive(:push).with(job_data)
-      
+
       described_class.reenqueue_orphans!
-      
+
       # Check that tracking keys are cleaned up
-      expect(redis.exists("#{namespace}:jobs:#{other_instance_id}")).to eq(0)
-      expect(redis.exists("#{namespace}:job:#{job_data['jid']}")).to eq(0)
+      redis_sync do |conn|
+        expect(conn.exists("#{namespace}:jobs:#{other_instance_id}")).to eq(0)
+        expect(conn.exists("#{namespace}:job:#{job_data['jid']}")).to eq(0)
+      end
     end
 
     it "doesn't re-enqueue jobs from live instances" do
       # Create a heartbeat for the "dead" instance to make it live
-      redis.setex("#{namespace}:instance:#{other_instance_id}", 60, Time.now.to_f)
-      
+      redis_sync { |conn| conn.setex("#{namespace}:instance:#{other_instance_id}", 60, Time.now.to_f) }
+
       expect(Sidekiq::Client).not_to receive(:push)
-      
+
       described_class.reenqueue_orphans!
-      
+
       # Job should still be tracked since instance is alive
-      expect(redis.exists("#{namespace}:jobs:#{other_instance_id}")).to eq(1)
+      redis_sync { |conn| expect(conn.exists("#{namespace}:jobs:#{other_instance_id}")).to eq(1) }
     end
 
     it "uses distributed locking to prevent concurrent recovery" do
       # Simulate another instance holding the lock
       lock_key = "#{namespace}:recovery_lock"
-      redis.set(lock_key, "other_instance", nx: true, ex: 300)
-      
+      redis_sync { |conn| conn.set(lock_key, "other_instance", nx: true, ex: 300) }
+
       expect(Sidekiq::Client).not_to receive(:push)
-      
+
       described_class.reenqueue_orphans!
-      
+
       # Job should still be there since recovery was skipped
-      expect(redis.exists("#{namespace}:jobs:#{other_instance_id}")).to eq(1)
+      redis_sync { |conn| expect(conn.exists("#{namespace}:jobs:#{other_instance_id}")).to eq(1) }
     end
 
     it "only runs recovery once when called multiple times concurrently" do
@@ -145,37 +154,42 @@ RSpec.describe Sidekiq::ProcessingTracker do
 
     it "skips block when lock is held by another instance" do
       lock_key = "#{namespace}:recovery_lock"
-      redis.set(lock_key, "other_instance", nx: true, ex: 300)
-      
+      redis_sync { |conn| conn.set(lock_key, "other_instance", nx: true, ex: 300) }
+
       executed = false
-      
+
       described_class.send(:with_recovery_lock) do
         executed = true
       end
-      
+
       expect(executed).to be false
     end
 
     it "releases lock after execution" do
       lock_key = "#{namespace}:recovery_lock"
-      
+      lock_value_during_execution = nil
+
       described_class.send(:with_recovery_lock) do
-        expect(redis.get(lock_key)).to eq(instance_id)
+        redis_sync { |conn| lock_value_during_execution = conn.get(lock_key) }
       end
-      
-      expect(redis.exists(lock_key)).to eq(0)
+
+      # Check that lock was held during execution
+      expect(lock_value_during_execution).to eq(instance_id)
+
+      # Check that lock is released after execution
+      redis_sync { |conn| expect(conn.exists(lock_key)).to eq(0) }
     end
 
     it "releases lock even if block raises an error" do
       lock_key = "#{namespace}:recovery_lock"
-      
+
       expect do
         described_class.send(:with_recovery_lock) do
           raise "test error"
         end
       end.to raise_error("test error")
-      
-      expect(redis.exists(lock_key)).to eq(0)
+
+      redis_sync { |conn| expect(conn.exists(lock_key)).to eq(0) }
     end
   end
 end
