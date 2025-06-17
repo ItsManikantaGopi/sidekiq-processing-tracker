@@ -32,6 +32,9 @@ RSpec.configure do |config|
       config.heartbeat_ttl = 3
       config.recovery_lock_ttl = 10
     end
+
+    # Ensure defaults are set up for tests
+    Sidekiq::ProcessingTracker.send(:setup_defaults)
   end
 
   config.after(:each) do

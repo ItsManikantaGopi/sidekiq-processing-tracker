@@ -39,6 +39,20 @@ RSpec.describe Sidekiq::ProcessingTracker do
   end
 
   describe "heartbeat system" do
+    before do
+      # Manually start heartbeat for testing since it's normally started by Sidekiq server
+      described_class.send(:setup_heartbeat)
+    end
+
+    after do
+      # Clean up heartbeat thread
+      heartbeat_thread = described_class.instance_variable_get(:@heartbeat_thread)
+      if heartbeat_thread&.alive?
+        heartbeat_thread.kill
+        described_class.instance_variable_set(:@heartbeat_thread, nil)
+      end
+    end
+
     it "creates heartbeat keys in Redis" do
       sleep 0.1 # Give heartbeat thread a moment
 

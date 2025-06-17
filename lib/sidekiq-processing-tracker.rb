@@ -19,7 +19,6 @@ module Sidekiq
       def configure
         yield self if block_given?
         setup_defaults
-        setup_heartbeat
         setup_sidekiq_hooks
       end
 
@@ -87,21 +86,6 @@ module Sidekiq
         logger.error e.backtrace.join("\n")
       end
 
-      private
-
-      def setup_defaults
-        @instance_id ||= ENV.fetch("PROCESSING_INSTANCE_ID") { SecureRandom.hex(8) }
-        @namespace ||= ENV.fetch("PROCESSING_NS", "sidekiq_processing")
-        @heartbeat_interval ||= ENV.fetch("HEARTBEAT_INTERVAL", "30").to_i
-        @heartbeat_ttl ||= ENV.fetch("HEARTBEAT_TTL", "90").to_i
-        @recovery_lock_ttl ||= ENV.fetch("RECOVERY_LOCK_TTL", "300").to_i
-        @logger ||= Sidekiq.logger
-      end
-
-      def setup_heartbeat
-        start_heartbeat_thread
-      end
-
       def setup_sidekiq_hooks
         return unless defined?(Sidekiq::VERSION)
 
@@ -110,9 +94,15 @@ module Sidekiq
             chain.add ProcessingTracker::Middleware
           end
 
-          # Add startup hook for orphan recovery
+          # Add startup hook for heartbeat and orphan recovery
           config.on(:startup) do
+            # Ensure configuration is set up
+            setup_defaults unless @instance_id
+
             logger.info "ProcessingTracker starting up on instance #{instance_id}"
+
+            # Start heartbeat system
+            setup_heartbeat
 
             # Run orphan recovery in a separate thread to avoid blocking startup
             Thread.new do
@@ -130,6 +120,12 @@ module Sidekiq
           config.on(:shutdown) do
             logger.info "ProcessingTracker shutting down instance #{instance_id}"
             begin
+              # Stop heartbeat thread
+              if @heartbeat_thread&.alive?
+                @heartbeat_thread.kill
+                @heartbeat_thread = nil
+              end
+
               redis_sync do |conn|
                 # Clean up instance heartbeat
                 conn.del("#{namespace}:instance:#{instance_id}")
@@ -153,12 +149,23 @@ module Sidekiq
         end
       end
 
-      def start_heartbeat_thread
+      private
+
+      def setup_defaults
+        @instance_id ||= ENV.fetch("PROCESSING_INSTANCE_ID") { SecureRandom.hex(8) }
+        @namespace ||= ENV.fetch("PROCESSING_NS", "sidekiq_processing")
+        @heartbeat_interval ||= ENV.fetch("HEARTBEAT_INTERVAL", "30").to_i
+        @heartbeat_ttl ||= ENV.fetch("HEARTBEAT_TTL", "90").to_i
+        @recovery_lock_ttl ||= ENV.fetch("RECOVERY_LOCK_TTL", "300").to_i
+        @logger ||= Sidekiq.logger
+      end
+
+      def setup_heartbeat
         # Initial heartbeat
         send_heartbeat
 
         # Background heartbeat thread
-        Thread.new do
+        @heartbeat_thread = Thread.new do
           loop do
             sleep heartbeat_interval
             begin
@@ -169,6 +176,8 @@ module Sidekiq
           end
         end
       end
+
+
 
       def send_heartbeat
         key = "#{namespace}:instance:#{instance_id}"
@@ -202,5 +211,5 @@ module Sidekiq
   end
 end
 
-# Auto-configure when required
-Sidekiq::ProcessingTracker.configure
+# Auto-setup Sidekiq hooks when gem is required
+Sidekiq::ProcessingTracker.setup_sidekiq_hooks
