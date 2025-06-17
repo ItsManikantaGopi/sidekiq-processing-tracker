@@ -1,0 +1,29 @@
+# Gem build artifacts
+*.gem
+
+# Bundler
+.bundle/
+vendor/bundle/
+
+# RSpec
+.rspec_status
+
+# Coverage reports
+coverage/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Log files
+*.log
+
+# Temporary files
+tmp/
+temp/

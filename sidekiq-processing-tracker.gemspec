@@ -20,19 +20,22 @@ Gem::Specification.new do |spec|
   spec.metadata["changelog_uri"] = "https://github.com/example/sidekiq-processing-tracker/blob/main/CHANGELOG.md"
 
   # Specify which files should be added to the gem when it is released.
-  spec.files = Dir.chdir(__dir__) do
-    `git ls-files -z`.split("\x0").reject do |f|
-      (File.expand_path(f) == __FILE__) ||
-        f.start_with?(*%w[bin/ test/ spec/ features/ .git .circleci appveyor Gemfile])
-    end
-  end
+  spec.files = [
+    "lib/sidekiq-processing-tracker.rb",
+    "lib/sidekiq/processing_tracker/version.rb",
+    "lib/sidekiq/processing_tracker/middleware.rb",
+    "lib/sidekiq/processing_tracker/worker.rb",
+    "README.md",
+    "LICENSE.txt",
+    "CHANGELOG.md"
+  ]
   spec.bindir = "exe"
   spec.executables = spec.files.grep(%r{\Aexe/}) { |f| File.basename(f) }
   spec.require_paths = ["lib"]
 
   # Runtime dependencies
   spec.add_dependency "sidekiq", ">= 6.0", "< 7"
-  spec.add_dependency "redis", ">= 4.0"
+  spec.add_dependency "redis", "~> 4.0"
 
   # Development dependencies
   spec.add_development_dependency "rspec", "~> 3.0"
