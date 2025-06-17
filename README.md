@@ -38,46 +38,48 @@ sequenceDiagram
 
 ```mermaid
 graph TB
-    subgraph "Kubernetes Cluster"
-        subgraph "Worker Pod A"
+    subgraph K8s["Kubernetes Cluster"]
+        subgraph PodA["Worker Pod A"]
             WA[Sidekiq Worker A]
             HA[Heartbeat Thread A]
             MA[Middleware A]
         end
-        
-        subgraph "Worker Pod B"
+
+        subgraph PodB["Worker Pod B"]
             WB[Sidekiq Worker B]
             HB[Heartbeat Thread B]
             MB[Middleware B]
         end
-        
-        subgraph "Worker Pod C"
+
+        subgraph PodC["Worker Pod C"]
             WC[Sidekiq Worker C]
             HC[Heartbeat Thread C]
             MC[Middleware C]
         end
     end
-    
-    subgraph "Redis"
-        IK[Instance Keys<br/>instance:pod-a<br/>instance:pod-b<br/>instance:pod-c]
-        JK[Job Tracking<br/>jobs:pod-a → {jid1, jid2}<br/>jobs:pod-b → {jid3}<br/>jobs:pod-c → {jid4, jid5}]
-        JP[Job Payloads<br/>job:jid1 → payload<br/>job:jid2 → payload<br/>...]
-        RL[Recovery Lock<br/>recovery_lock]
+
+    subgraph Redis["Redis Storage"]
+        IK["Instance Keys<br/>instance:pod-a<br/>instance:pod-b<br/>instance:pod-c"]
+        JK["Job Tracking<br/>jobs:pod-a<br/>jobs:pod-b<br/>jobs:pod-c"]
+        JP["Job Payloads<br/>job:jid1<br/>job:jid2<br/>job:jid3"]
+        RL["Recovery Lock<br/>recovery_lock"]
     end
-    
+
+    Queue[Sidekiq Queue]
+
     HA -->|Every 30s| IK
     HB -->|Every 30s| IK
     HC -->|Every 30s| IK
-    
+
     MA -->|Job Start| JK
     MA -->|Job Start| JP
     MA -->|Job End| JK
     MA -->|Job End| JP
-    
+
     WA -->|Startup| RL
     WA -->|Check Orphans| JK
-    WA -->|Re-enqueue| Queue[Sidekiq Queue]
-    
+    WA -->|Re-enqueue| Queue
+
     style IK fill:#e1f5fe
     style JK fill:#f3e5f5
     style JP fill:#fff3e0
