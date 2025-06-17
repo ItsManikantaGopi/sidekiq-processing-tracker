@@ -65,10 +65,9 @@ puts "Namespace: #{Sidekiq::ProcessingTracker.namespace}"
 begin
   Sidekiq::ProcessingTracker.redis_sync do |conn|
     puts "Redis connection: #{conn.ping}"
-    puts "Redis namespace: #{conn.namespace}"
 
     # Test namespace functionality
-    test_key = "demo_key"
+    test_key = Sidekiq::ProcessingTracker.send(:namespaced_key, "demo_key")
     conn.set(test_key, "demo_value")
     value = conn.get(test_key)
     puts "Namespace test: #{test_key} = #{value}"

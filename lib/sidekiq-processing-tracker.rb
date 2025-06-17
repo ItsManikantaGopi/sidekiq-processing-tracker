@@ -2,7 +2,6 @@
 
 require "sidekiq"
 require "redis"
-require "redis/namespace"
 require "logger"
 require "securerandom"
 
@@ -27,20 +26,16 @@ module Sidekiq
         if redis_options
           # Use custom Redis configuration if provided
           redis_client = Redis.new(redis_options)
-          namespaced_redis = Redis::Namespace.new(namespace, redis: redis_client)
           if block_given?
-            result = yield namespaced_redis
+            result = yield redis_client
             redis_client.close
             result
           else
-            namespaced_redis
+            redis_client
           end
         else
-          # Use Sidekiq's Redis connection pool with namespace
-          Sidekiq.redis do |conn|
-            namespaced_conn = Redis::Namespace.new(namespace, redis: conn)
-            yield namespaced_conn if block_given?
-          end
+          # Use Sidekiq's Redis connection pool
+          Sidekiq.redis(&block)
         end
       end
 
@@ -49,14 +44,36 @@ module Sidekiq
         redis(&block)
       end
 
+      # Helper method to add namespace prefix to Redis keys
+      def namespaced_key(key)
+        "#{namespace}:#{key}"
+      end
+
+      # Clear unique-jobs lock for orphaned jobs to allow immediate re-enqueuing
+      def clear_unique_jobs_lock(job_data)
+        return unless job_data['unique_digest']
+
+        begin
+          # Check if SidekiqUniqueJobs is available
+          if defined?(SidekiqUniqueJobs::Digests)
+            SidekiqUniqueJobs::Digests.del(digest: job_data['unique_digest'])
+            logger.debug "ProcessingTracker cleared unique-jobs lock for job #{job_data['jid']} with digest #{job_data['unique_digest']}"
+          else
+            logger.debug "ProcessingTracker: SidekiqUniqueJobs not available, skipping lock cleanup for job #{job_data['jid']}"
+          end
+        rescue => e
+          logger.warn "ProcessingTracker failed to clear unique-jobs lock for job #{job_data['jid']}: #{e.message}"
+        end
+      end
+
       def reenqueue_orphans!
         with_recovery_lock do
           logger.info "ProcessingTracker starting orphan job recovery"
 
           redis_sync do |conn|
-            # Get all job keys and instance keys (namespace is handled by Redis::Namespace)
-            job_keys = conn.keys("jobs:*")
-            instance_keys = conn.keys("instance:*")
+            # Get all job keys and instance keys (using custom namespacing)
+            job_keys = conn.keys(namespaced_key("jobs:*"))
+            instance_keys = conn.keys(namespaced_key("instance:*"))
 
             # Extract instance IDs from keys
             live_instances = instance_keys.map { |key| key.split(":").last }.to_set
@@ -71,7 +88,7 @@ module Sidekiq
 
                 job_ids.each do |jid|
                   # Get the job payload
-                  job_data_key = "job:#{jid}"
+                  job_data_key = namespaced_key("job:#{jid}")
                   job_payload = conn.get(job_data_key)
 
                   if job_payload
@@ -89,6 +106,9 @@ module Sidekiq
             if orphaned_jobs.any?
               logger.info "ProcessingTracker found #{orphaned_jobs.size} orphaned jobs, re-enqueuing"
               orphaned_jobs.each do |job_data|
+                # Clear unique-jobs lock before re-enqueuing to avoid lock conflicts
+                clear_unique_jobs_lock(job_data)
+
                 Sidekiq::Client.push(job_data)
                 logger.debug "ProcessingTracker re-enqueued job #{job_data['jid']}"
               end
@@ -143,17 +163,17 @@ module Sidekiq
               end
 
               redis_sync do |conn|
-                # Clean up instance heartbeat (namespace handled by Redis::Namespace)
-                conn.del("instance:#{instance_id}")
+                # Clean up instance heartbeat (using custom namespacing)
+                conn.del(namespaced_key("instance:#{instance_id}"))
 
                 # Clean up any remaining job tracking for this instance
-                job_tracking_key = "jobs:#{instance_id}"
+                job_tracking_key = namespaced_key("jobs:#{instance_id}")
                 tracked_jobs = conn.smembers(job_tracking_key)
 
                 if tracked_jobs.any?
                   logger.warn "ProcessingTracker cleaning up #{tracked_jobs.size} tracked jobs on shutdown"
                   tracked_jobs.each do |jid|
-                    conn.del("job:#{jid}")
+                    conn.del(namespaced_key("job:#{jid}"))
                   end
                   conn.del(job_tracking_key)
                 end
@@ -196,7 +216,7 @@ module Sidekiq
 
 
       def send_heartbeat
-        key = "instance:#{instance_id}"
+        key = namespaced_key("instance:#{instance_id}")
         redis_sync do |conn|
           conn.setex(key, heartbeat_ttl, Time.now.to_f)
         end
@@ -204,7 +224,7 @@ module Sidekiq
       end
 
       def with_recovery_lock
-        lock_key = "recovery_lock"
+        lock_key = namespaced_key("recovery_lock")
         lock_acquired = redis_sync do |conn|
           conn.set(lock_key, instance_id, nx: true, ex: recovery_lock_ttl)
         end

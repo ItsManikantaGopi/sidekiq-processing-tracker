@@ -196,9 +196,42 @@ end
 
 ### Benefits
 - **Connection Efficiency**: Reuses Sidekiq's connection pool by default
-- **Automatic Namespacing**: Uses Redis::Namespace for clean key separation
+- **Custom Namespacing**: Efficient key prefixing without external dependencies
 - **Configuration Consistency**: Inherits Sidekiq's Redis settings
 - **Flexible Options**: Support for custom Redis when needed
+- **Unique Jobs Integration**: Automatically handles SidekiqUniqueJobs lock clearing
+
+## SidekiqUniqueJobs Integration
+
+The gem automatically integrates with [sidekiq-unique-jobs](https://github.com/mhenrixon/sidekiq-unique-jobs) to ensure orphaned unique jobs can be recovered immediately:
+
+### Automatic Lock Clearing
+When recovering orphaned jobs, the gem automatically clears any existing unique job locks to prevent conflicts:
+
+```ruby
+class UniqueWorker
+  include Sidekiq::Worker
+  include Sidekiq::ProcessingTracker::Worker
+
+  sidekiq_options unique: :until_executed
+
+  def perform(user_id)
+    # This job will be tracked and can be recovered even with unique constraints
+  end
+end
+```
+
+### Benefits
+- **Immediate Recovery**: Orphaned unique jobs are re-enqueued immediately (no 1-hour wait)
+- **Automatic Detection**: Works seamlessly whether SidekiqUniqueJobs is present or not
+- **Surgical Precision**: Only clears locks for confirmed orphaned jobs
+- **Error Resilience**: Continues operation even if lock clearing fails
+
+### How It Works
+1. **Orphan Detection**: Identifies jobs from dead worker instances
+2. **Lock Clearing**: Removes unique job locks using `SidekiqUniqueJobs::Digests.del`
+3. **Safe Re-enqueuing**: Pushes jobs back to Sidekiq without lock conflicts
+4. **Cleanup**: Removes tracking data after successful re-enqueuing
 
 **Note**: Redis configuration is automatically inherited from Sidekiq's configuration. Configure Redis through Sidekiq's standard methods.
 
