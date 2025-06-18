@@ -1,89 +1,92 @@
-# Sidekiq Processing Tracker
+# Sidekiq Assured Jobs
 
-Reliable in-flight job tracking for Sidekiq 6.x on Kubernetes with automatic orphan job recovery.
+Reliable job execution guarantee for Sidekiq with automatic orphan recovery.
 
 ## Overview
 
-When running Sidekiq workers in Kubernetes, pod restarts and crashes can leave jobs in an inconsistent state. Jobs that were being processed when a pod dies are lost forever, leading to data inconsistency and missed work.
+Sidekiq Assured Jobs ensures that your critical Sidekiq jobs are never lost due to worker crashes, pod restarts, or unexpected shutdowns. It provides a robust tracking system that monitors in-flight jobs and automatically recovers any work that was interrupted.
 
-Sidekiq Processing Tracker solves this by:
+**Perfect for:**
+- Critical business processes that cannot be lost
+- Financial transactions and payment processing
+- Data synchronization and ETL operations
+- Email delivery and notification systems
+- Any job where reliability is paramount
 
-- **Tracking in-flight jobs** in Redis with per-pod instance identification
-- **Heartbeat monitoring** to detect when worker pods go offline
-- **Automatic recovery** of orphaned jobs from dead instances
-- **Distributed locking** to ensure safe recovery operations
-- **Zero configuration** setup with sensible defaults
-- **Uses Sidekiq's Redis** - leverages existing Redis connection pool for efficiency
+## Key Features
 
-## Problems Solved
+- **🛡️ Job Assurance**: Guarantees that tracked jobs will complete or be automatically retried
+- **🔄 Automatic Recovery**: Detects and re-enqueues orphaned jobs from crashed workers
+- **⚡ Zero Configuration**: Works out of the box with sensible defaults
+- **🏗️ Production Ready**: Designed for high-throughput production environments
+- **🔗 Sidekiq Integration**: Uses Sidekiq's existing Redis connection pool
+- **🔒 Distributed Locking**: Prevents duplicate recovery operations
+- **📊 Minimal Overhead**: Lightweight tracking with configurable heartbeat intervals
 
-### The Lost Job Problem
+## The Problem
+
+When Sidekiq workers crash or are forcefully terminated (SIGKILL), jobs that were being processed are lost forever:
 
 ```mermaid
 sequenceDiagram
     participant Client
     participant Queue as Sidekiq Queue
-    participant Worker as Worker Pod
+    participant Worker as Worker Process
     participant Redis
 
-    Client->>Queue: Enqueue Job
+    Client->>Queue: Enqueue Critical Job
     Queue->>Worker: Fetch Job
-    Worker->>Redis: Start Processing
-    Note over Worker: Pod crashes/restarts
+    Worker->>Redis: Job starts processing
+    Note over Worker: Worker crashes (SIGKILL)
     Worker--xRedis: Job lost forever
-    Note over Queue: Job never completed
     Note over Queue: No retry, no error handling
+    Note over Client: Critical work never completed
 ```
 
-### Our Solution Architecture
+## The Solution
+
+Sidekiq Assured Jobs tracks in-flight jobs and automatically recovers them:
 
 ```mermaid
 graph TB
-    subgraph K8s["Kubernetes Cluster"]
-        subgraph PodA["Worker Pod A"]
-            WA[Sidekiq Worker A]
-            HA[Heartbeat Thread A]
-            MA[Middleware A]
+    subgraph Cluster["Production Environment"]
+        subgraph W1["Worker Instance 1"]
+            SW1[Sidekiq Worker]
+            HB1[Heartbeat]
+            MW1[Tracking Middleware]
         end
 
-        subgraph PodB["Worker Pod B"]
-            WB[Sidekiq Worker B]
-            HB[Heartbeat Thread B]
-            MB[Middleware B]
-        end
-
-        subgraph PodC["Worker Pod C"]
-            WC[Sidekiq Worker C]
-            HC[Heartbeat Thread C]
-            MC[Middleware C]
+        subgraph W2["Worker Instance 2"]
+            SW2[Sidekiq Worker]
+            HB2[Heartbeat]
+            MW2[Tracking Middleware]
         end
     end
 
     subgraph Redis["Redis Storage"]
-        IK["Instance Keys<br/>instance:pod-a<br/>instance:pod-b<br/>instance:pod-c"]
-        JK["Job Tracking<br/>jobs:pod-a<br/>jobs:pod-b<br/>jobs:pod-c"]
-        JP["Job Payloads<br/>job:jid1<br/>job:jid2<br/>job:jid3"]
-        RL["Recovery Lock<br/>recovery_lock"]
+        HK["Heartbeats<br/>instance:worker-1<br/>instance:worker-2"]
+        JT["Job Tracking<br/>jobs:worker-1<br/>jobs:worker-2"]
+        JP["Job Payloads<br/>job:abc123<br/>job:def456"]
+        RL["Recovery Lock"]
     end
 
     Queue[Sidekiq Queue]
 
-    HA -->|Every 30s| IK
-    HB -->|Every 30s| IK
-    HC -->|Every 30s| IK
+    HB1 -->|Every 15s| HK
+    HB2 -->|Every 15s| HK
 
-    MA -->|Job Start| JK
-    MA -->|Job Start| JP
-    MA -->|Job End| JK
-    MA -->|Job End| JP
+    MW1 -->|Track Start/End| JT
+    MW1 -->|Store Payload| JP
+    MW2 -->|Track Start/End| JT
+    MW2 -->|Store Payload| JP
 
-    WA -->|Startup| RL
-    WA -->|Check Orphans| JK
-    WA -->|Re-enqueue| Queue
+    SW2 -->|On Startup| RL
+    SW2 -->|Detect Orphans| JT
+    SW2 -->|Re-enqueue| Queue
 
-    style IK fill:#e1f5fe
-    style JK fill:#f3e5f5
-    style JP fill:#fff3e0
+    style HK fill:#e8f5e8
+    style JT fill:#fff3e0
+    style JP fill:#e3f2fd
     style RL fill:#ffebee
 ```
 
@@ -92,7 +95,7 @@ graph TB
 Add this line to your application's Gemfile:
 
 ```ruby
-gem 'sidekiq-processing-tracker'
+gem 'sidekiq-assured-jobs'
 ```
 
 And then execute:
@@ -101,93 +104,99 @@ And then execute:
 bundle install
 ```
 
-## Usage
+## Quick Start
 
-### Basic Setup
+### 1. Basic Setup
 
-The gem auto-configures itself when required. Simply require it in your application:
+The gem auto-configures itself when required:
 
 ```ruby
 # In your application (e.g., config/application.rb or config/initializers/sidekiq.rb)
-require 'sidekiq-processing-tracker'
+require 'sidekiq-assured-jobs'
 ```
 
-### Worker Configuration
+### 2. Enable Job Tracking
 
-Include the `ProcessingTracker::Worker` module in workers you want to track:
+Include the `AssuredJobs::Worker` module in workers you want to track:
 
 ```ruby
-class CriticalDataProcessor
+class PaymentProcessor
   include Sidekiq::Worker
-  include Sidekiq::ProcessingTracker::Worker  # Enables tracking
-  
-  def perform(user_id, data)
-    # This job will be tracked and recovered if the pod crashes
-    process_critical_data(user_id, data)
+  include Sidekiq::AssuredJobs::Worker  # Enables job assurance
+
+  def perform(payment_id, amount)
+    # This job will be tracked and recovered if the worker crashes
+    process_payment(payment_id, amount)
   end
 end
 
-class RegularWorker
+class LogCleanupWorker
   include Sidekiq::Worker
-  # No ProcessingTracker::Worker - not tracked
-  
+  # No AssuredJobs::Worker - not tracked (fine for non-critical work)
+
   def perform
-    # This job won't be tracked (use for non-critical work)
+    # This job won't be tracked
+    cleanup_old_logs
   end
 end
 ```
 
-### Manual Configuration
+### 3. That's It!
 
-```ruby
-Sidekiq::ProcessingTracker.configure do |config|
-  config.namespace = "my_app_processing"
-  config.heartbeat_interval = 45  # seconds
-  config.heartbeat_ttl = 120      # seconds
-  config.recovery_lock_ttl = 600  # seconds
-
-  # Optional: Use custom Redis instance (advanced use case)
-  # config.redis_options = { url: ENV['TRACKER_REDIS_URL'] }
-end
-
-# Note: The gem automatically uses Sidekiq's Redis configuration
-# No need to configure Redis separately unless you want isolation
-```
+Your critical jobs are now protected. If a worker crashes while processing a tracked job, another worker will automatically detect and re-enqueue it.
 
 ## Configuration
+
+### Environment Variables
 
 All configuration can be done via environment variables:
 
 | Environment Variable | Default | Description |
 |---------------------|---------|-------------|
-| `PROCESSING_INSTANCE_ID` | Auto-generated | Unique identifier for this worker instance |
-| `PROCESSING_NS` | `sidekiq_processing` | Redis namespace for all keys |
-| `HEARTBEAT_INTERVAL` | `30` | Seconds between heartbeat updates |
-| `HEARTBEAT_TTL` | `90` | Seconds before instance considered dead |
-| `RECOVERY_LOCK_TTL` | `300` | Seconds to hold recovery lock |
+| `ASSURED_JOBS_INSTANCE_ID` | Auto-generated | Unique identifier for this worker instance |
+| `ASSURED_JOBS_NS` | `sidekiq_assured_jobs` | Redis namespace for all keys |
+| `ASSURED_JOBS_HEARTBEAT_INTERVAL` | `15` | Seconds between heartbeat updates |
+| `ASSURED_JOBS_HEARTBEAT_TTL` | `45` | Seconds before instance considered dead |
+| `ASSURED_JOBS_RECOVERY_LOCK_TTL` | `300` | Seconds to hold recovery lock |
 
-## Redis Integration
-
-The gem provides flexible Redis integration options:
-
-### Default Configuration (Recommended)
-By default, the gem uses Sidekiq's existing Redis connection pool with proper namespacing:
+### Programmatic Configuration
 
 ```ruby
-# Uses Sidekiq's Redis configuration automatically
-Sidekiq::ProcessingTracker.configure do |config|
-  config.namespace = "my_app_processing"
+Sidekiq::AssuredJobs.configure do |config|
+  config.namespace = "my_app_assured_jobs"
+  config.heartbeat_interval = 30  # seconds
+  config.heartbeat_ttl = 90       # seconds
+  config.recovery_lock_ttl = 600  # seconds
+
+  # Optional: Use custom Redis instance (advanced use case)
+  # config.redis_options = { url: ENV['ASSURED_JOBS_REDIS_URL'] }
 end
 ```
 
-### Custom Redis Configuration (Advanced)
+## Advanced Features
+
+### Redis Integration
+
+The gem provides flexible Redis integration options:
+
+#### Default Configuration (Recommended)
+By default, the gem uses Sidekiq's existing Redis connection pool:
+
+```ruby
+# Uses Sidekiq's Redis configuration automatically
+Sidekiq::AssuredJobs.configure do |config|
+  config.namespace = "my_app_assured_jobs"
+end
+```
+
+#### Custom Redis Configuration (Advanced)
 For advanced use cases requiring Redis isolation:
 
 ```ruby
-Sidekiq::ProcessingTracker.configure do |config|
-  config.namespace = "my_app_processing"
+Sidekiq::AssuredJobs.configure do |config|
+  config.namespace = "my_app_assured_jobs"
   config.redis_options = {
-    url: ENV['TRACKER_REDIS_URL'],
+    url: ENV['ASSURED_JOBS_REDIS_URL'],
     db: 2,
     timeout: 5
   }
@@ -199,43 +208,34 @@ end
 - **Custom Namespacing**: Efficient key prefixing without external dependencies
 - **Configuration Consistency**: Inherits Sidekiq's Redis settings
 - **Flexible Options**: Support for custom Redis when needed
-- **Unique Jobs Integration**: Automatically handles SidekiqUniqueJobs lock clearing
 
-## SidekiqUniqueJobs Integration
+### SidekiqUniqueJobs Integration
 
 The gem automatically integrates with [sidekiq-unique-jobs](https://github.com/mhenrixon/sidekiq-unique-jobs) to ensure orphaned unique jobs can be recovered immediately:
 
-### Automatic Lock Clearing
-When recovering orphaned jobs, the gem automatically clears any existing unique job locks to prevent conflicts:
-
 ```ruby
-class UniqueWorker
+class UniquePaymentProcessor
   include Sidekiq::Worker
-  include Sidekiq::ProcessingTracker::Worker
+  include Sidekiq::AssuredJobs::Worker
 
   sidekiq_options unique: :until_executed
 
-  def perform(user_id)
+  def perform(payment_id)
     # This job will be tracked and can be recovered even with unique constraints
+    process_payment(payment_id)
   end
 end
 ```
 
-### Benefits
-- **Immediate Recovery**: Orphaned unique jobs are re-enqueued immediately (no 1-hour wait)
+**Benefits:**
+- **Immediate Recovery**: Orphaned unique jobs are re-enqueued immediately (no waiting period)
 - **Automatic Detection**: Works seamlessly whether SidekiqUniqueJobs is present or not
 - **Surgical Precision**: Only clears locks for confirmed orphaned jobs
 - **Error Resilience**: Continues operation even if lock clearing fails
 
-### How It Works
-1. **Orphan Detection**: Identifies jobs from dead worker instances
-2. **Lock Clearing**: Removes unique job locks using `SidekiqUniqueJobs::Digests.del`
-3. **Safe Re-enqueuing**: Pushes jobs back to Sidekiq without lock conflicts
-4. **Cleanup**: Removes tracking data after successful re-enqueuing
+## Production Deployment
 
-**Note**: Redis configuration is automatically inherited from Sidekiq's configuration. Configure Redis through Sidekiq's standard methods.
-
-### Kubernetes Deployment Example
+### Kubernetes Example
 
 ```yaml
 apiVersion: apps/v1
@@ -250,75 +250,103 @@ spec:
       - name: worker
         image: myapp:latest
         env:
-        - name: PROCESSING_INSTANCE_ID
+        - name: ASSURED_JOBS_INSTANCE_ID
           valueFrom:
             fieldRef:
               fieldPath: metadata.name  # Use pod name as instance ID
-        - name: HEARTBEAT_INTERVAL
-          value: "30"
-        - name: HEARTBEAT_TTL
-          value: "90"
-        # Redis configuration is handled by Sidekiq's standard configuration
+        - name: ASSURED_JOBS_HEARTBEAT_INTERVAL
+          value: "15"
+        - name: ASSURED_JOBS_HEARTBEAT_TTL
+          value: "45"
+```
+
+### Docker Compose Example
+
+```yaml
+version: '3.8'
+services:
+  worker:
+    image: myapp:latest
+    environment:
+      - ASSURED_JOBS_INSTANCE_ID=${HOSTNAME}
+      - ASSURED_JOBS_HEARTBEAT_INTERVAL=15
+      - ASSURED_JOBS_HEARTBEAT_TTL=45
+    deploy:
+      replicas: 3
 ```
 
 ## How It Works
 
-1. **Instance Registration**: Each worker pod generates a unique instance ID and sends periodic heartbeats to Redis
+1. **Instance Registration**: Each worker instance generates a unique ID and sends periodic heartbeats to Redis
 2. **Job Tracking**: When a tracked job starts, the middleware records the job ID and payload in Redis
 3. **Job Cleanup**: When a job completes (success or failure), tracking data is removed
 4. **Orphan Detection**: On startup, workers check for jobs tracked by dead instances (no recent heartbeat)
 5. **Safe Recovery**: Using distributed locking, one worker re-enqueues orphaned jobs back to Sidekiq
 6. **Cleanup**: Orphaned tracking data is removed after successful re-enqueuing
 
+## Use Cases
+
+### Financial Services
+```ruby
+class PaymentProcessor
+  include Sidekiq::Worker
+  include Sidekiq::AssuredJobs::Worker
+
+  def perform(payment_id, amount)
+    # Critical: Payment must be processed
+    process_payment(payment_id, amount)
+  end
+end
+```
+
+### Data Synchronization
+```ruby
+class DataSyncWorker
+  include Sidekiq::Worker
+  include Sidekiq::AssuredJobs::Worker
+
+  def perform(sync_batch_id)
+    # Important: Data consistency depends on completion
+    sync_data_batch(sync_batch_id)
+  end
+end
+```
+
+### Email Delivery
+```ruby
+class CriticalEmailWorker
+  include Sidekiq::Worker
+  include Sidekiq::AssuredJobs::Worker
+
+  def perform(email_id)
+    # Must deliver: Password resets, order confirmations, etc.
+    deliver_critical_email(email_id)
+  end
+end
+```
+
 ## Testing
 
-The gem includes a comprehensive test suite. Run tests with:
+Run the test suite:
 
 ```bash
 bundle exec rspec
 ```
 
-### Example Test
+## Dependencies
 
-```ruby
-RSpec.describe "ProcessingTracker Integration" do
-  it "recovers orphaned jobs" do
-    # Simulate a job from a dead instance
-    dead_instance = "dead-pod-123"
-    job_data = {
-      "class" => "TestWorker",
-      "args" => ["important_data"],
-      "jid" => "job_123",
-      "queue" => "default"
-    }
-    
-    # Set up orphaned job state
-    redis.sadd("sidekiq_processing:jobs:#{dead_instance}", job_data["jid"])
-    redis.set("sidekiq_processing:job:#{job_data['jid']}", job_data.to_json)
-    
-    # Run recovery
-    expect(Sidekiq::Client).to receive(:push).with(job_data)
-    Sidekiq::ProcessingTracker.reenqueue_orphans!
-    
-    # Verify cleanup
-    expect(redis.exists("sidekiq_processing:jobs:#{dead_instance}")).to eq(0)
-  end
-end
-```
+### Runtime Dependencies
+- `sidekiq` (>= 6.0, < 7)
+- `redis` (~> 4.0)
 
-## Development
-
-After checking out the repo, run:
-
-```bash
-bundle install
-bundle exec rspec  # Run tests
-bundle exec rubocop  # Check code style
-```
+### Development Dependencies
+- `rspec` (~> 3.0)
+- `bundler` (~> 2.0)
+- `rubocop` (~> 1.0)
 
 ## Contributing
 
-Bug reports and pull requests are welcome on GitHub at https://github.com/example/sidekiq-processing-tracker.
+Bug reports and pull requests are welcome on GitHub at https://github.com/example/sidekiq-assured-jobs.
 
 ## License
 

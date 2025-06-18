@@ -2,13 +2,13 @@
 
 require "spec_helper"
 
-RSpec.describe Sidekiq::ProcessingTracker::Middleware do
+RSpec.describe Sidekiq::AssuredJobs::Middleware do
   let(:middleware) { described_class.new }
-  let(:namespace) { Sidekiq::ProcessingTracker.namespace }
-  let(:instance_id) { Sidekiq::ProcessingTracker.instance_id }
+  let(:namespace) { Sidekiq::AssuredJobs.namespace }
+  let(:instance_id) { Sidekiq::AssuredJobs.instance_id }
 
   def redis_sync(&block)
-    Sidekiq::ProcessingTracker.redis_sync(&block)
+    Sidekiq::AssuredJobs.redis_sync(&block)
   end
   
   let(:job_data) do
@@ -138,12 +138,12 @@ RSpec.describe Sidekiq::ProcessingTracker::Middleware do
   end
 
   describe "#should_track_job?" do
-    it "returns true for workers with processing: true option" do
+    it "returns true for workers with assured_jobs: true option" do
       worker = TestWorker.new
       expect(middleware.send(:should_track_job?, worker, job_data)).to be true
     end
 
-    it "returns false for workers without processing option" do
+    it "returns false for workers without assured_jobs option" do
       worker = NonTrackedWorker.new
       expect(middleware.send(:should_track_job?, worker, job_data)).to be false
     end
