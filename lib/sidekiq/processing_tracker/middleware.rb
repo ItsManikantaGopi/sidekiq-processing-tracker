@@ -4,8 +4,15 @@ module Sidekiq
   module ProcessingTracker
     class Middleware
       def call(worker, job, queue)
+        # Log all jobs that go through the middleware
+        worker_class = worker.is_a?(Class) ? worker : worker.class
+        ProcessingTracker.logger.info "ProcessingTracker middleware called for #{worker_class.name} (#{job['jid']})"
+
         # Only track jobs that have processing: true option
-        return yield unless should_track_job?(worker, job)
+        should_track = should_track_job?(worker, job)
+        ProcessingTracker.logger.info "ProcessingTracker should track #{worker_class.name}: #{should_track}"
+
+        return yield unless should_track
 
         jid = job["jid"]
         instance_id = ProcessingTracker.instance_id
@@ -17,27 +24,34 @@ module Sidekiq
 
         begin
           # Add job to tracking set and store job payload
-          ProcessingTracker.redis_sync do |conn|
-            conn.multi do |multi|
-              multi.sadd(job_tracking_key, jid)
-              multi.set(job_data_key, job.to_json)
+          begin
+            ProcessingTracker.redis_sync do |conn|
+              conn.multi do |multi|
+                multi.sadd(job_tracking_key, jid)
+                multi.set(job_data_key, job.to_json)
+              end
             end
+            logger.info "ProcessingTracker started tracking job #{jid} on instance #{instance_id}"
+          rescue => e
+            logger.error "ProcessingTracker failed to start tracking job #{jid}: #{e.message}"
+            logger.error e.backtrace.join("\n")
           end
-
-          logger.debug "ProcessingTracker started tracking job #{jid} on instance #{instance_id}"
 
           # Execute the job
           yield
         ensure
           # Remove job from tracking
-          ProcessingTracker.redis_sync do |conn|
-            conn.multi do |multi|
-              multi.srem(job_tracking_key, jid)
-              multi.del(job_data_key)
+          begin
+            ProcessingTracker.redis_sync do |conn|
+              conn.multi do |multi|
+                multi.srem(job_tracking_key, jid)
+                multi.del(job_data_key)
+              end
             end
+            logger.info "ProcessingTracker stopped tracking job #{jid} on instance #{instance_id}"
+          rescue => e
+            logger.error "ProcessingTracker failed to stop tracking job #{jid}: #{e.message}"
           end
-
-          logger.debug "ProcessingTracker stopped tracking job #{jid} on instance #{instance_id}"
         end
       end
 
@@ -46,10 +60,19 @@ module Sidekiq
       def should_track_job?(worker, job)
         # Check if the worker class has processing: true option
         worker_class = worker.is_a?(Class) ? worker : worker.class
-        return false unless worker_class.respond_to?(:sidekiq_options)
+
+        unless worker_class.respond_to?(:sidekiq_options)
+          ProcessingTracker.logger.info "ProcessingTracker: #{worker_class.name} does not respond to sidekiq_options"
+          return false
+        end
 
         options = worker_class.sidekiq_options
-        options["processing"] == true
+        has_processing = options["processing"] == true
+
+        ProcessingTracker.logger.info "ProcessingTracker: #{worker_class.name} sidekiq_options: #{options.inspect}"
+        ProcessingTracker.logger.info "ProcessingTracker: #{worker_class.name} processing option: #{options['processing'].inspect}"
+
+        has_processing
       end
     end
   end
