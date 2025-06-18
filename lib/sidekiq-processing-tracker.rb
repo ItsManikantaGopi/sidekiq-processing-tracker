@@ -4,6 +4,7 @@ require "sidekiq"
 require "redis"
 require "logger"
 require "securerandom"
+require "set"
 
 require_relative "sidekiq/processing_tracker/version"
 require_relative "sidekiq/processing_tracker/middleware"
@@ -57,12 +58,13 @@ module Sidekiq
           # Check if SidekiqUniqueJobs is available
           if defined?(SidekiqUniqueJobs::Digests)
             SidekiqUniqueJobs::Digests.del(digest: job_data['unique_digest'])
-            logger.debug "ProcessingTracker cleared unique-jobs lock for job #{job_data['jid']} with digest #{job_data['unique_digest']}"
+            logger.info "ProcessingTracker cleared unique-jobs lock for job #{job_data['jid']} with digest #{job_data['unique_digest']}"
           else
-            logger.debug "ProcessingTracker: SidekiqUniqueJobs not available, skipping lock cleanup for job #{job_data['jid']}"
+            logger.info "ProcessingTracker: SidekiqUniqueJobs not available, skipping lock cleanup for job #{job_data['jid']}"
           end
         rescue => e
           logger.warn "ProcessingTracker failed to clear unique-jobs lock for job #{job_data['jid']}: #{e.message}"
+          logger.warn e.backtrace.join("\n")
         end
       end
 
@@ -110,7 +112,7 @@ module Sidekiq
                 clear_unique_jobs_lock(job_data)
 
                 Sidekiq::Client.push(job_data)
-                logger.debug "ProcessingTracker re-enqueued job #{job_data['jid']}"
+                logger.info "ProcessingTracker re-enqueued job #{job_data['jid']} (#{job_data['class']})"
               end
             else
               logger.info "ProcessingTracker found no orphaned jobs"
@@ -163,19 +165,20 @@ module Sidekiq
               end
 
               redis_sync do |conn|
-                # Clean up instance heartbeat (using custom namespacing)
+                # Only clean up instance heartbeat - let orphan recovery handle job cleanup
+                # This ensures that if there are running jobs during shutdown, they will be
+                # detected as orphaned and recovered by the next instance
                 conn.del(namespaced_key("instance:#{instance_id}"))
 
-                # Clean up any remaining job tracking for this instance
+                # Log tracked jobs but don't clean them up - they should be recovered as orphans
                 job_tracking_key = namespaced_key("jobs:#{instance_id}")
                 tracked_jobs = conn.smembers(job_tracking_key)
 
                 if tracked_jobs.any?
-                  logger.warn "ProcessingTracker cleaning up #{tracked_jobs.size} tracked jobs on shutdown"
-                  tracked_jobs.each do |jid|
-                    conn.del(namespaced_key("job:#{jid}"))
-                  end
-                  conn.del(job_tracking_key)
+                  logger.warn "ProcessingTracker leaving #{tracked_jobs.size} tracked jobs for orphan recovery: #{tracked_jobs.join(', ')}"
+                  logger.info "ProcessingTracker: These jobs will be recovered by the next instance startup"
+                else
+                  logger.info "ProcessingTracker: No tracked jobs to leave for recovery"
                 end
               end
             rescue => e
