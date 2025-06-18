@@ -142,7 +142,7 @@ module Sidekiq
             # Start heartbeat system
             setup_heartbeat
 
-            # Run orphan recovery in a separate thread to avoid blocking startup
+            # Run orphan recovery on startup only
             Thread.new do
               sleep 5 # Give the server a moment to fully start
               begin
@@ -193,8 +193,8 @@ module Sidekiq
       def setup_defaults
         @instance_id ||= ENV.fetch("PROCESSING_INSTANCE_ID") { SecureRandom.hex(8) }
         @namespace ||= ENV.fetch("PROCESSING_NS", "sidekiq_processing")
-        @heartbeat_interval ||= ENV.fetch("HEARTBEAT_INTERVAL", "30").to_i
-        @heartbeat_ttl ||= ENV.fetch("HEARTBEAT_TTL", "90").to_i
+        @heartbeat_interval ||= ENV.fetch("HEARTBEAT_INTERVAL", "15").to_i  # Faster heartbeat for quicker SIGKILL detection
+        @heartbeat_ttl ||= ENV.fetch("HEARTBEAT_TTL", "45").to_i            # Shorter TTL for faster orphan detection
         @recovery_lock_ttl ||= ENV.fetch("RECOVERY_LOCK_TTL", "300").to_i
         @logger ||= Sidekiq.logger
       end
@@ -215,6 +215,8 @@ module Sidekiq
           end
         end
       end
+
+
 
 
 
