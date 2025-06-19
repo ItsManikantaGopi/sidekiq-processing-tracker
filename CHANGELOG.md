@@ -5,40 +5,43 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.0.0] - 2024-06-17
+## [1.0.0] - 2025-06-18
 
 ### Added
-- Initial release of sidekiq-processing-tracker
-- Reliable in-flight job tracking for Sidekiq 6.x
-- Automatic orphan job recovery in Kubernetes environments
-- Per-pod instance identification with heartbeat monitoring
-- Distributed locking for safe recovery operations
-- Middleware for tracking job lifecycle
-- Worker mixin for easy integration
-- Comprehensive test suite with RSpec
-- Full documentation with Mermaid diagrams
-- Environment variable configuration
-- Sidekiq server lifecycle hooks
-- Redis-based job state persistence
+- **Initial Release**: First public release of sidekiq-assured-jobs
+- **Job Assurance**: Guarantees that critical Sidekiq jobs are never lost due to worker crashes
+- **Automatic Recovery**: Detects and re-enqueues orphaned jobs from crashed workers
+- **Production Ready**: Designed for high-throughput production environments
+- **Zero Configuration**: Works out of the box with sensible defaults
+- **Sidekiq Integration**: Uses Sidekiq's existing Redis connection pool
+- **Distributed Locking**: Prevents duplicate recovery operations
+- **Minimal Overhead**: Lightweight tracking with configurable heartbeat intervals
 
 ### Features
 - **Job Tracking**: Tracks in-flight jobs in Redis with instance identification
-- **Heartbeat System**: Monitors worker pod health with configurable intervals
-- **Orphan Recovery**: Automatically re-enqueues jobs from crashed pods
-- **Distributed Locking**: Prevents concurrent recovery operations
-- **Zero Configuration**: Works out of the box with sensible defaults
-- **Kubernetes Ready**: Designed for containerized environments
-- **Selective Tracking**: Only tracks workers that include the ProcessingTracker::Worker module
+- **Heartbeat System**: Monitors worker instance health with configurable intervals
+- **Orphan Recovery**: Automatically re-enqueues jobs from crashed instances
+- **Selective Tracking**: Only tracks workers that include the AssuredJobs::Worker module
+- **SidekiqUniqueJobs Integration**: Automatically handles unique job lock clearing
+- **Flexible Redis Configuration**: Uses Sidekiq's Redis by default, supports custom Redis
 
 ### Configuration Options
-- `REDIS_URL`: Redis connection URL
-- `PROCESSING_INSTANCE_ID`: Unique instance identifier
-- `PROCESSING_NS`: Redis namespace for keys
-- `HEARTBEAT_INTERVAL`: Seconds between heartbeats
-- `HEARTBEAT_TTL`: Instance timeout threshold
-- `RECOVERY_LOCK_TTL`: Recovery operation lock duration
+- `ASSURED_JOBS_INSTANCE_ID`: Unique instance identifier (auto-generated if not set)
+- `ASSURED_JOBS_NS`: Redis namespace for keys (default: "sidekiq_assured_jobs")
+- `ASSURED_JOBS_HEARTBEAT_INTERVAL`: Seconds between heartbeats (default: 15)
+- `ASSURED_JOBS_HEARTBEAT_TTL`: Instance timeout threshold (default: 45)
+- `ASSURED_JOBS_RECOVERY_LOCK_TTL`: Recovery operation lock duration (default: 300)
 
 ### Dependencies
 - Ruby >= 2.6.0
 - Sidekiq >= 6.0, < 7
-- Redis >= 4.0
+- Redis ~> 4.0
+
+### Breaking Changes from sidekiq-processing-tracker
+- **Gem Name**: Changed from `sidekiq-processing-tracker` to `sidekiq-assured-jobs`
+- **Module Name**: Changed from `Sidekiq::ProcessingTracker` to `Sidekiq::AssuredJobs`
+- **Worker Mixin**: Changed from `ProcessingTracker::Worker` to `AssuredJobs::Worker`
+- **Sidekiq Option**: Changed from `processing: true` to `assured_jobs: true`
+- **Environment Variables**: All prefixed with `ASSURED_JOBS_` instead of `PROCESSING_`
+- **Default Namespace**: Changed from `sidekiq_processing` to `sidekiq_assured_jobs`
+- **Logging**: Reduced verbose logging for production use
