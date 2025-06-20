@@ -146,6 +146,7 @@ module Sidekiq
               sleep 5 # Give the server a moment to fully start
               begin
                 reenqueue_orphans!
+                spinup_delayed_recovery_thread
               rescue => e
                 logger.error "AssuredJobs startup orphan recovery failed: #{e.message}"
                 logger.error e.backtrace.join("\n")
