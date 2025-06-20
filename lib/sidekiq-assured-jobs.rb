@@ -15,7 +15,7 @@ module Sidekiq
     class Error < StandardError; end
 
     class << self
-      attr_accessor :instance_id, :namespace, :heartbeat_interval, :heartbeat_ttl, :recovery_lock_ttl, :logger, :redis_options
+      attr_accessor :instance_id, :namespace, :heartbeat_interval, :heartbeat_ttl, :recovery_lock_ttl, :logger, :redis_options, :delayed_recovery_count, :delayed_recovery_interval
 
       def configure
         yield self if block_given?
@@ -146,6 +146,7 @@ module Sidekiq
               sleep 5 # Give the server a moment to fully start
               begin
                 reenqueue_orphans!
+                spinup_delayed_recovery_thread
               rescue => e
                 logger.error "AssuredJobs startup orphan recovery failed: #{e.message}"
                 logger.error e.backtrace.join("\n")
@@ -196,6 +197,8 @@ module Sidekiq
         @heartbeat_ttl ||= ENV.fetch("ASSURED_JOBS_HEARTBEAT_TTL", "45").to_i
         @recovery_lock_ttl ||= ENV.fetch("ASSURED_JOBS_RECOVERY_LOCK_TTL", "300").to_i
         @logger ||= Sidekiq.logger
+        @delayed_recovery_count ||= ENV.fetch("ASSURED_JOBS_DELAYED_RECOVERY_COUNT", "1").to_i
+        @delayed_recovery_interval ||= ENV.fetch("ASSURED_JOBS_DELAYED_RECOVERY_INTERVAL", "300").to_i
       end
 
       def setup_heartbeat
@@ -223,6 +226,20 @@ module Sidekiq
         logger.debug "AssuredJobs heartbeat sent for instance #{instance_id}"
       end
 
+      def spinup_delayed_recovery_thread
+        Thread.new do
+          @delayed_recovery_count.times do |i|
+            sleep @delayed_recovery_interval
+            begin
+              reenqueue_orphans!
+            rescue => e
+              logger.error(
+                "[AssuredJobs] delayed recovery ##{i+1} failed: #{e.message}"
+              )
+            end
+          end
+        end
+      end
       def with_recovery_lock
         lock_key = namespaced_key("recovery_lock")
         lock_acquired = redis_sync do |conn|
