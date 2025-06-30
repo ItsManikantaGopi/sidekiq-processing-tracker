@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2025-06-20
+
+### Added
+- **Delayed Recovery System**: Configurable additional recovery passes for enhanced reliability
+- **New Configuration Options**:
+  - `ASSURED_JOBS_DELAYED_RECOVERY_INTERVAL`: Seconds between delayed recovery passes (default: 300)
+  - `ASSURED_JOBS_DELAYED_RECOVERY_COUNT`: Number of delayed recovery passes to run (default: 1)
+
+### Enhanced
+- **Startup Recovery**: Improved startup process now includes delayed recovery thread spawning
+- **Error Handling**: Enhanced error handling for delayed recovery operations
+- **Documentation**: Comprehensive configuration reference with production recommendations
+
+### Features
+- **Background Recovery Threads**: Automatic spawning of delayed recovery threads after startup
+- **Configurable Safety Net**: Multiple recovery passes to catch edge cases and network partition scenarios
+- **Production Ready**: Optimized for high-availability and large-scale deployments
+
 ## [1.0.0] - 2025-06-18
 
 ### Added
