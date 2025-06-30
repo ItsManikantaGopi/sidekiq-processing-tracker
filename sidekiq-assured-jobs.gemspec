@@ -5,19 +5,19 @@ require_relative "lib/sidekiq/assured_jobs/version"
 Gem::Specification.new do |spec|
   spec.name = "sidekiq-assured-jobs"
   spec.version = Sidekiq::AssuredJobs::VERSION
-  spec.authors = ["Sidekiq Assured Jobs Team"]
-  spec.email = ["team@example.com"]
+  spec.authors = ["Manikanta Gopi"]
+  spec.email = ["gopimanikanta50@gmail.com"]
 
   spec.summary = "Reliable job execution guarantee for Sidekiq with automatic orphan recovery"
   spec.description = "Ensures Sidekiq jobs are never lost due to worker crashes or restarts by tracking in-flight jobs and automatically recovering orphaned work"
-  spec.homepage = "https://github.com/example/sidekiq-assured-jobs"
+  spec.homepage = "https://github.com/ItsManikantaGopi/sidekiq-assured-jobs"
   spec.license = "MIT"
   spec.required_ruby_version = ">= 2.6.0"
 
   spec.metadata["allowed_push_host"] = "https://rubygems.org"
   spec.metadata["homepage_uri"] = spec.homepage
-  spec.metadata["source_code_uri"] = "https://github.com/example/sidekiq-assured-jobs"
-  spec.metadata["changelog_uri"] = "https://github.com/example/sidekiq-assured-jobs/blob/main/CHANGELOG.md"
+  spec.metadata["source_code_uri"] = "https://github.com/ItsManikantaGopi/sidekiq-assured-jobs"
+  spec.metadata["changelog_uri"] = "https://github.com/ItsManikantaGopi/sidekiq-assured-jobs/blob/main/CHANGELOG.md"
 
   # Specify which files should be added to the gem when it is released.
   spec.files = [
