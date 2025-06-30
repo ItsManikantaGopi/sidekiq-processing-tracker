@@ -5,12 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.0.0] - 2025-06-18
+## [1.0.0] - 2025-06-20
 
 ### Added
 - **Initial Release**: First public release of sidekiq-assured-jobs
 - **Job Assurance**: Guarantees that critical Sidekiq jobs are never lost due to worker crashes
 - **Automatic Recovery**: Detects and re-enqueues orphaned jobs from crashed workers
+- **Delayed Recovery System**: Configurable additional recovery passes for enhanced reliability
 - **Production Ready**: Designed for high-throughput production environments
 - **Zero Configuration**: Works out of the box with sensible defaults
 - **Sidekiq Integration**: Uses Sidekiq's existing Redis connection pool
@@ -21,6 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Job Tracking**: Tracks in-flight jobs in Redis with instance identification
 - **Heartbeat System**: Monitors worker instance health with configurable intervals
 - **Orphan Recovery**: Automatically re-enqueues jobs from crashed instances
+- **Background Recovery Threads**: Automatic spawning of delayed recovery threads after startup
+- **Configurable Safety Net**: Multiple recovery passes to catch edge cases and network partition scenarios
 - **Selective Tracking**: Only tracks workers that include the AssuredJobs::Worker module
 - **SidekiqUniqueJobs Integration**: Automatically handles unique job lock clearing
 - **Flexible Redis Configuration**: Uses Sidekiq's Redis by default, supports custom Redis
@@ -31,6 +34,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `ASSURED_JOBS_HEARTBEAT_INTERVAL`: Seconds between heartbeats (default: 15)
 - `ASSURED_JOBS_HEARTBEAT_TTL`: Instance timeout threshold (default: 45)
 - `ASSURED_JOBS_RECOVERY_LOCK_TTL`: Recovery operation lock duration (default: 300)
+- `ASSURED_JOBS_DELAYED_RECOVERY_INTERVAL`: Seconds between delayed recovery passes (default: 300)
+- `ASSURED_JOBS_DELAYED_RECOVERY_COUNT`: Number of delayed recovery passes to run (default: 1)
 
 ### Dependencies
 - Ruby >= 2.6.0
