@@ -1,0 +1,313 @@
+/* Orphaned Jobs Dashboard Styles */
+
+/* Ensure consistent styling with Sidekiq's existing theme */
+.orphaned-jobs-container {
+  background-color: #fff;
+  border-radius: 0.375rem;
+  box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+}
+
+/* Table styling */
+.table-orphaned-jobs {
+  background-color: white;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.table-orphaned-jobs th {
+  background-color: #f8f9fa;
+  border-bottom: 2px solid #dee2e6;
+  font-weight: 600;
+  color: #495057;
+  padding: 0.75rem;
+  vertical-align: middle;
+}
+
+.table-orphaned-jobs td {
+  padding: 0.75rem;
+  vertical-align: middle;
+  border-bottom: 1px solid #dee2e6;
+}
+
+.table-orphaned-jobs tbody tr:hover {
+  background-color: #f8f9fa;
+}
+
+/* Status badges */
+.status-badge {
+  display: inline-block;
+  padding: 0.25em 0.6em;
+  font-size: 0.75em;
+  font-weight: 700;
+  line-height: 1;
+  text-align: center;
+  white-space: nowrap;
+  vertical-align: baseline;
+  border-radius: 0.375rem;
+}
+
+.status-badge.alive {
+  color: #155724;
+  background-color: #d4edda;
+  border: 1px solid #c3e6cb;
+}
+
+.status-badge.dead {
+  color: #721c24;
+  background-color: #f8d7da;
+  border: 1px solid #f5c6cb;
+}
+
+.status-badge.orphaned {
+  color: #856404;
+  background-color: #fff3cd;
+  border: 1px solid #ffeaa7;
+}
+
+/* Action buttons */
+.action-buttons {
+  display: flex;
+  gap: 0.25rem;
+  align-items: center;
+}
+
+.action-buttons .btn {
+  padding: 0.25rem 0.5rem;
+  font-size: 0.75rem;
+  line-height: 1.2;
+  border-radius: 0.25rem;
+}
+
+.btn-retry {
+  color: #856404;
+  background-color: #fff3cd;
+  border-color: #ffeaa7;
+}
+
+.btn-retry:hover {
+  color: #533f03;
+  background-color: #ffeaa7;
+  border-color: #ffdf7e;
+}
+
+.btn-delete {
+  color: #721c24;
+  background-color: #f8d7da;
+  border-color: #f5c6cb;
+}
+
+.btn-delete:hover {
+  color: #491217;
+  background-color: #f5c6cb;
+  border-color: #f1b0b7;
+}
+
+/* Instance status cards */
+.instance-card {
+  border: 1px solid #dee2e6;
+  border-radius: 0.375rem;
+  padding: 1rem;
+  margin-bottom: 1rem;
+  background-color: #fff;
+}
+
+.instance-card.alive {
+  border-left: 4px solid #28a745;
+}
+
+.instance-card.dead {
+  border-left: 4px solid #dc3545;
+}
+
+.instance-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
+.instance-id {
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace;
+  font-size: 0.875rem;
+  background-color: #f8f9fa;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.25rem;
+  border: 1px solid #dee2e6;
+}
+
+.instance-meta {
+  font-size: 0.875rem;
+  color: #6c757d;
+}
+
+/* Bulk action controls */
+.bulk-actions {
+  background-color: #f8f9fa;
+  border: 1px solid #dee2e6;
+  border-radius: 0.375rem;
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+
+.bulk-actions .form-check {
+  margin-bottom: 0;
+}
+
+.bulk-actions .btn-group {
+  margin-left: 1rem;
+}
+
+/* Job detail view */
+.job-detail-container {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.job-detail-card {
+  border: 1px solid #dee2e6;
+  border-radius: 0.375rem;
+  margin-bottom: 1.5rem;
+  background-color: #fff;
+  box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+}
+
+.job-detail-header {
+  background-color: #f8f9fa;
+  border-bottom: 1px solid #dee2e6;
+  padding: 1rem 1.25rem;
+  border-radius: 0.375rem 0.375rem 0 0;
+}
+
+.job-detail-body {
+  padding: 1.25rem;
+}
+
+.job-detail-table {
+  margin-bottom: 0;
+}
+
+.job-detail-table th {
+  width: 30%;
+  font-weight: 600;
+  color: #495057;
+  background-color: transparent;
+  border-bottom: 1px solid #dee2e6;
+  padding: 0.5rem 0;
+}
+
+.job-detail-table td {
+  border-bottom: 1px solid #dee2e6;
+  padding: 0.5rem 0;
+}
+
+/* Code blocks */
+.code-block {
+  background-color: #f8f9fa;
+  border: 1px solid #e9ecef;
+  border-radius: 0.375rem;
+  padding: 1rem;
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace;
+  font-size: 0.875rem;
+  line-height: 1.4;
+  overflow-x: auto;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+/* Error information */
+.error-card {
+  border-color: #dc3545;
+}
+
+.error-card .job-detail-header {
+  background-color: #dc3545;
+  color: #fff;
+  border-bottom-color: #dc3545;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .action-buttons {
+    flex-direction: column;
+    gap: 0.125rem;
+  }
+  
+  .action-buttons .btn {
+    width: 100%;
+    text-align: center;
+  }
+  
+  .instance-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+  
+  .bulk-actions {
+    text-align: center;
+  }
+  
+  .bulk-actions .btn-group {
+    margin-left: 0;
+    margin-top: 0.5rem;
+  }
+}
+
+/* Loading states */
+.loading-spinner {
+  display: inline-block;
+  width: 1rem;
+  height: 1rem;
+  border: 0.125rem solid #f3f3f3;
+  border-top: 0.125rem solid #007bff;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Auto-refresh indicator */
+.auto-refresh-indicator {
+  position: fixed;
+  top: 1rem;
+  right: 1rem;
+  background-color: #28a745;
+  color: #fff;
+  padding: 0.5rem 1rem;
+  border-radius: 0.375rem;
+  font-size: 0.875rem;
+  z-index: 1050;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.auto-refresh-indicator.show {
+  opacity: 1;
+}
+
+/* Utility classes */
+.text-truncate-12 {
+  max-width: 12ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.font-monospace {
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace;
+}
+
+.border-left-success {
+  border-left: 4px solid #28a745;
+}
+
+.border-left-danger {
+  border-left: 4px solid #dc3545;
+}
+
+.border-left-warning {
+  border-left: 4px solid #ffc107;
+}
