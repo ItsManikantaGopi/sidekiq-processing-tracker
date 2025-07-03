@@ -18,6 +18,7 @@ Sidekiq Assured Jobs ensures that your critical Sidekiq jobs are never lost due 
 - **🛡️ Job Assurance**: Guarantees that tracked jobs will complete or be automatically retried
 - **🔄 Automatic Recovery**: Detects and re-enqueues orphaned jobs from crashed workers
 - **⏰ Delayed Recovery**: Configurable additional recovery passes for enhanced reliability
+- **🖥️ Web Dashboard**: Monitor and manage orphaned jobs through Sidekiq's web interface
 - **⚡ Zero Configuration**: Works out of the box with sensible defaults
 - **🏗️ Production Ready**: Designed for high-throughput production environments
 - **🔗 Sidekiq Integration**: Uses Sidekiq's existing Redis connection pool
@@ -145,6 +146,72 @@ end
 ### 3. That's It!
 
 Your critical jobs are now protected. If a worker crashes while processing a tracked job, another worker will automatically detect and re-enqueue it.
+
+## Web Interface
+
+Sidekiq Assured Jobs includes a web dashboard that integrates seamlessly with Sidekiq's existing web interface. The dashboard allows you to monitor and manage orphaned jobs in real-time.
+
+### Setup
+
+The web interface is automatically available when you mount Sidekiq::Web in your application:
+
+```ruby
+# config/routes.rb (Rails)
+require 'sidekiq/web'
+mount Sidekiq::Web => '/sidekiq'
+```
+
+Or for standalone applications:
+
+```ruby
+# config.ru
+require 'sidekiq/web'
+run Sidekiq::Web
+```
+
+### Features
+
+The **Orphaned Jobs** tab provides:
+
+- **📊 Real-time Dashboard**: View all orphaned jobs with key information
+- **🔍 Job Details**: Detailed view of individual orphaned jobs including arguments and error information
+- **🔄 Manual Recovery**: Retry orphaned jobs individually or in bulk
+- **🗑️ Job Management**: Delete orphaned jobs that are no longer needed
+- **📈 Instance Monitoring**: Track the status of worker instances (alive/dead)
+- **⏱️ Auto-refresh**: Dashboard automatically updates every 30 seconds
+- **🎯 Bulk Operations**: Select multiple jobs for batch retry or delete operations
+
+### Dashboard Information
+
+For each orphaned job, the dashboard displays:
+
+- **Job ID**: Unique identifier for the job
+- **Class**: The worker class name
+- **Queue**: The queue the job was running in
+- **Instance**: The worker instance that was processing the job
+- **Orphaned Time**: When the job became orphaned
+- **Duration**: How long the job has been orphaned
+- **Arguments**: The job's input parameters
+- **Error Information**: Any error details if the job failed
+
+### Actions Available
+
+- **Retry**: Re-enqueue the job for processing
+- **Delete**: Remove the job from tracking (cannot be undone)
+- **Bulk Retry**: Retry multiple selected jobs at once
+- **Bulk Delete**: Delete multiple selected jobs at once
+
+The web interface provides a user-friendly way to monitor your job reliability and take action when needed, complementing the automatic recovery system.
+
+### Demo
+
+To see the web interface in action, run the included demo:
+
+```bash
+ruby examples/web_demo.rb
+```
+
+Then visit `http://localhost:4567/orphaned-jobs` to explore the dashboard with sample orphaned jobs.
 
 ## Configuration
 

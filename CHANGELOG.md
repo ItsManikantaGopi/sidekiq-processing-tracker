@@ -5,6 +5,41 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2025-01-03
+
+### Added
+- **🖥️ Web Dashboard**: Complete web interface for monitoring and managing orphaned jobs
+- **📊 Real-time Monitoring**: Live dashboard showing all orphaned jobs with detailed information
+- **🔄 Interactive Actions**: Manual retry and delete operations for individual jobs
+- **🎯 Bulk Operations**: Select and manage multiple orphaned jobs simultaneously
+- **📈 Instance Monitoring**: Visual status tracking of worker instances (alive/dead)
+- **🔍 Job Details View**: Comprehensive job information including arguments, errors, and metadata
+- **⏱️ Auto-refresh**: Dashboard automatically updates every 30 seconds
+- **📱 Responsive Design**: Mobile-friendly interface matching Sidekiq's UI patterns
+
+### Features
+- **Orphaned Jobs Tab**: New tab in Sidekiq web interface at `/orphaned-jobs`
+- **Job Arguments Display**: Arguments column in main table for better job identification
+- **Bulk Selection**: Checkbox interface for selecting multiple jobs
+- **Confirmation Dialogs**: Prevent accidental job deletions
+- **Instance Health Cards**: Visual display of live vs dead worker instances
+- **Job Duration Tracking**: Shows how long jobs have been orphaned
+- **Error Information**: Display job errors and failure details
+- **Demo Script**: Interactive demo at `examples/web_demo.rb`
+
+### Technical
+- **Web Extension**: Seamless integration with `Sidekiq::Web`
+- **Helper Methods**: Time formatting, text truncation, CSRF protection
+- **Data Access Layer**: Efficient Redis queries for orphaned job data
+- **Test Coverage**: Comprehensive test suite for web functionality
+- **Unicode Icons**: Replaced FontAwesome with Unicode symbols for better compatibility
+
+### Documentation
+- **Web Interface Guide**: Complete documentation of dashboard features
+- **Setup Instructions**: Clear integration steps for Rails and standalone apps
+- **Demo Instructions**: How to run the interactive demo
+- **Feature Overview**: Detailed explanation of all web interface capabilities
+
 ## [1.0.0] - 2025-06-20
 
 ### Added

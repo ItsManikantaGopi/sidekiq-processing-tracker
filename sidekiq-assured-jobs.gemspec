@@ -25,6 +25,11 @@ Gem::Specification.new do |spec|
     "lib/sidekiq/assured_jobs/version.rb",
     "lib/sidekiq/assured_jobs/middleware.rb",
     "lib/sidekiq/assured_jobs/worker.rb",
+    "lib/sidekiq/assured_jobs/web.rb",
+    "web/views/orphaned_jobs.erb",
+    "web/views/orphaned_job.erb",
+    "web/assets/orphaned_jobs.css",
+    "examples/web_demo.rb",
     "README.md",
     "LICENSE.txt",
     "CHANGELOG.md"
@@ -41,4 +46,5 @@ Gem::Specification.new do |spec|
   spec.add_development_dependency "rspec", "~> 3.0"
   spec.add_development_dependency "bundler", "~> 2.0"
   spec.add_development_dependency "rubocop", "~> 1.0"
+  spec.add_development_dependency "rack-test", "~> 2.0"
 end

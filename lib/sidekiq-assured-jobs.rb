@@ -10,12 +10,20 @@ require_relative "sidekiq/assured_jobs/version"
 require_relative "sidekiq/assured_jobs/middleware"
 require_relative "sidekiq/assured_jobs/worker"
 
+# Optionally load web extension if Sidekiq::Web is available
+begin
+  require "sidekiq/web"
+  require_relative "sidekiq/assured_jobs/web"
+rescue LoadError
+  # Sidekiq::Web not available, skip web extension
+end
+
 module Sidekiq
   module AssuredJobs
     class Error < StandardError; end
 
     class << self
-      attr_accessor :instance_id, :namespace, :heartbeat_interval, :heartbeat_ttl, :recovery_lock_ttl, :logger, :redis_options, :delayed_recovery_count, :delayed_recovery_interval
+      attr_accessor :instance_id, :namespace, :heartbeat_interval, :heartbeat_ttl, :recovery_lock_ttl, :logger, :redis_options, :delayed_recovery_count, :delayed_recovery_interval, :auto_recovery_enabled
 
       def configure
         yield self if block_given?
@@ -123,6 +131,100 @@ module Sidekiq
         logger.error e.backtrace.join("\n")
       end
 
+      # Web interface support methods
+      def get_orphaned_jobs_info
+        orphaned_jobs = []
+
+        redis_sync do |conn|
+          # Get all job keys and instance keys
+          job_keys = conn.keys(namespaced_key("jobs:*"))
+          instance_keys = conn.keys(namespaced_key("instance:*"))
+
+          # Extract live instance IDs
+          live_instances = instance_keys.map { |key| key.split(":").last }.to_set
+
+          job_keys.each do |job_key|
+            instance_id = job_key.split(":").last
+            unless live_instances.include?(instance_id)
+              # Get all job IDs for this dead instance
+              job_ids = conn.smembers(job_key)
+
+              job_ids.each do |jid|
+                job_data_key = namespaced_key("job:#{jid}")
+                job_payload = conn.get(job_data_key)
+
+                if job_payload
+                  job_data = JSON.parse(job_payload)
+                  job_data['instance_id'] = instance_id
+                  job_data['orphaned_at'] = get_instance_last_heartbeat(instance_id, conn)
+                  job_data['orphaned_duration'] = calculate_orphaned_duration(job_data['orphaned_at'])
+                  orphaned_jobs << job_data
+                end
+              end
+            end
+          end
+        end
+
+        orphaned_jobs.sort_by { |job| job['orphaned_at'] || 0 }.reverse
+      end
+
+      def get_instances_status
+        instances = {}
+
+        redis_sync do |conn|
+          # Get live instances
+          instance_keys = conn.keys(namespaced_key("instance:*"))
+          instance_keys.each do |key|
+            instance_id = key.split(":").last
+            heartbeat = conn.get(key)
+            instances[instance_id] = {
+              status: 'alive',
+              last_heartbeat: heartbeat ? Time.at(heartbeat.to_f) : nil
+            }
+          end
+
+          # Get dead instances with orphaned jobs
+          job_keys = conn.keys(namespaced_key("jobs:*"))
+          job_keys.each do |job_key|
+            instance_id = job_key.split(":").last
+            unless instances[instance_id]
+              instances[instance_id] = {
+                status: 'dead',
+                last_heartbeat: get_instance_last_heartbeat(instance_id, conn),
+                orphaned_job_count: conn.scard(job_key)
+              }
+            end
+          end
+        end
+
+        instances
+      end
+
+      def get_orphaned_job_by_jid(jid)
+        redis_sync do |conn|
+          job_data_key = namespaced_key("job:#{jid}")
+          job_payload = conn.get(job_data_key)
+
+          if job_payload
+            job_data = JSON.parse(job_payload)
+
+            # Find which instance this job belongs to
+            job_keys = conn.keys(namespaced_key("jobs:*"))
+            job_keys.each do |job_key|
+              if conn.sismember(job_key, jid)
+                instance_id = job_key.split(":").last
+                job_data['instance_id'] = instance_id
+                job_data['orphaned_at'] = get_instance_last_heartbeat(instance_id, conn)
+                job_data['orphaned_duration'] = calculate_orphaned_duration(job_data['orphaned_at'])
+                break
+              end
+            end
+
+            job_data
+          end
+        end
+      end
+
       def setup_sidekiq_hooks
         return unless defined?(Sidekiq::VERSION)
 
@@ -141,16 +243,20 @@ module Sidekiq
             # Start heartbeat system
             setup_heartbeat
 
-            # Run orphan recovery on startup only
-            Thread.new do
-              sleep 5 # Give the server a moment to fully start
-              begin
-                reenqueue_orphans!
-                spinup_delayed_recovery_thread
-              rescue => e
-                logger.error "AssuredJobs startup orphan recovery failed: #{e.message}"
-                logger.error e.backtrace.join("\n")
+            # Run orphan recovery on startup only (if enabled)
+            if auto_recovery_enabled
+              Thread.new do
+                sleep 5 # Give the server a moment to fully start
+                begin
+                  reenqueue_orphans!
+                  spinup_delayed_recovery_thread
+                rescue => e
+                  logger.error "AssuredJobs startup orphan recovery failed: #{e.message}"
+                  logger.error e.backtrace.join("\n")
+                end
               end
+            else
+              logger.info "AssuredJobs auto-recovery is disabled"
             end
           end
 
@@ -199,6 +305,7 @@ module Sidekiq
         @logger ||= Sidekiq.logger
         @delayed_recovery_count ||= ENV.fetch("ASSURED_JOBS_DELAYED_RECOVERY_COUNT", "1").to_i
         @delayed_recovery_interval ||= ENV.fetch("ASSURED_JOBS_DELAYED_RECOVERY_INTERVAL", "300").to_i
+        @auto_recovery_enabled ||= ENV.fetch("ASSURED_JOBS_AUTO_RECOVERY", "true").downcase == "true"
       end
 
       def setup_heartbeat
@@ -257,6 +364,28 @@ module Sidekiq
         else
           logger.debug "AssuredJobs recovery lock not acquired, another instance is handling recovery"
         end
+      end
+
+      def get_instance_last_heartbeat(instance_id, conn = nil)
+        operation = proc do |redis_conn|
+          key = namespaced_key("instance:#{instance_id}")
+          heartbeat = redis_conn.get(key)
+          return heartbeat.to_f if heartbeat
+
+          # If no heartbeat found, estimate based on TTL
+          Time.now.to_f - heartbeat_ttl
+        end
+
+        if conn
+          operation.call(conn)
+        else
+          redis_sync(&operation)
+        end
+      end
+
+      def calculate_orphaned_duration(orphaned_at)
+        return nil unless orphaned_at
+        Time.now.to_f - orphaned_at.to_f
       end
     end
   end
