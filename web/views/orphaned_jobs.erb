@@ -8,13 +8,13 @@
   <div class="col-sm-7 text-right">
     <div class="btn-group" role="group">
       <button type="button" class="btn btn-primary btn-sm" onclick="refreshData()">
-        <i class="fas fa-sync-alt"></i> Refresh
+        ↻ Refresh
       </button>
       <button type="button" class="btn btn-warning btn-sm" onclick="bulkRetry()" id="bulk-retry-btn" disabled>
-        <i class="fas fa-redo"></i> Retry Selected
+        ↻ Retry Selected
       </button>
       <button type="button" class="btn btn-danger btn-sm" onclick="bulkDelete()" id="bulk-delete-btn" disabled>
-        <i class="fas fa-trash"></i> Delete Selected
+        ✕ Delete Selected
       </button>
     </div>
   </div>
@@ -148,14 +148,14 @@
                   <form method="post" action="<%= root_path %>orphaned-jobs/<%= job['jid'] %>/retry" style="display: inline;">
                     <%= csrf_tag %>
                     <button type="submit" class="btn btn-warning btn-sm" title="Retry Job">
-                      <i class="fas fa-redo"></i>
+                      Retry
                     </button>
                   </form>
-                  <form method="post" action="<%= root_path %>orphaned-jobs/<%= job['jid'] %>/delete" style="display: inline;" 
+                  <form method="post" action="<%= root_path %>orphaned-jobs/<%= job['jid'] %>/delete" style="display: inline;"
                         onsubmit="return confirm('Are you sure you want to delete this orphaned job?')">
                     <%= csrf_tag %>
                     <button type="submit" class="btn btn-danger btn-sm" title="Delete Job">
-                      <i class="fas fa-trash"></i>
+                      Delete
                     </button>
                   </form>
                 </div>
