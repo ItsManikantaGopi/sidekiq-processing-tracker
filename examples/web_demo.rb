@@ -23,6 +23,7 @@ Sidekiq::AssuredJobs.configure do |config|
   config.namespace = "demo_assured_jobs"
   config.heartbeat_interval = 5
   config.heartbeat_ttl = 15
+  config.auto_recovery_enabled = false # Disable auto-recovery for demo
 end
 
 # Demo worker class

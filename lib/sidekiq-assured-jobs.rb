@@ -23,7 +23,7 @@ module Sidekiq
     class Error < StandardError; end
 
     class << self
-      attr_accessor :instance_id, :namespace, :heartbeat_interval, :heartbeat_ttl, :recovery_lock_ttl, :logger, :redis_options, :delayed_recovery_count, :delayed_recovery_interval
+      attr_accessor :instance_id, :namespace, :heartbeat_interval, :heartbeat_ttl, :recovery_lock_ttl, :logger, :redis_options, :delayed_recovery_count, :delayed_recovery_interval, :auto_recovery_enabled
 
       def configure
         yield self if block_given?
@@ -243,16 +243,20 @@ module Sidekiq
             # Start heartbeat system
             setup_heartbeat
 
-            # Run orphan recovery on startup only
-            Thread.new do
-              sleep 5 # Give the server a moment to fully start
-              begin
-                reenqueue_orphans!
-                spinup_delayed_recovery_thread
-              rescue => e
-                logger.error "AssuredJobs startup orphan recovery failed: #{e.message}"
-                logger.error e.backtrace.join("\n")
+            # Run orphan recovery on startup only (if enabled)
+            if auto_recovery_enabled
+              Thread.new do
+                sleep 5 # Give the server a moment to fully start
+                begin
+                  reenqueue_orphans!
+                  spinup_delayed_recovery_thread
+                rescue => e
+                  logger.error "AssuredJobs startup orphan recovery failed: #{e.message}"
+                  logger.error e.backtrace.join("\n")
+                end
               end
+            else
+              logger.info "AssuredJobs auto-recovery is disabled"
             end
           end
 
@@ -301,6 +305,7 @@ module Sidekiq
         @logger ||= Sidekiq.logger
         @delayed_recovery_count ||= ENV.fetch("ASSURED_JOBS_DELAYED_RECOVERY_COUNT", "1").to_i
         @delayed_recovery_interval ||= ENV.fetch("ASSURED_JOBS_DELAYED_RECOVERY_INTERVAL", "300").to_i
+        @auto_recovery_enabled ||= ENV.fetch("ASSURED_JOBS_AUTO_RECOVERY", "true").downcase == "true"
       end
 
       def setup_heartbeat
